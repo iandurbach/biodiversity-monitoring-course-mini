@@ -1,0 +1,701 @@
+---
+title: "Species Distribution Models -- Practical"
+subtitle: Biodiversity Monitoring Course, Module 4
+fontsize: 10pt
+format:
+  beamer:
+    theme: metropolis
+    incremental: false
+    slide-level: 2
+    pdf-engine: xelatex
+    keep-tex: false
+    fig-crop: false
+    syntax-highlighting: tango
+    include-in-header:
+      text: |
+        \definecolor{bl}{rgb}{0.16,0.32,0.75}
+        \definecolor{rd}{rgb}{0.82,0.1,0.26}
+        \setkeys{Gin}{keepaspectratio}
+        \setbeamertemplate{title page}{%
+          \centering
+          \includegraphics[width=0.27\textwidth,height=1.1cm,keepaspectratio]{../logos/01-standard-black-text.png}\hfill
+          \includegraphics[width=0.40\textwidth,height=1.1cm,keepaspectratio]{../logos/creem-long.png}\hfill
+          \includegraphics[width=0.19\textwidth,height=1.1cm,keepaspectratio]{../logos/SLT-Logo-2016-300dpi-Regular.jpg}\par
+          \vspace{0.35cm}
+          {\LARGE\inserttitle\par}
+          \vspace{0.35cm}
+          {\normalsize\insertsubtitle\par}
+          \vspace{0.25cm}
+          {\small UNDP-GEF Project\par}
+          \vspace{0.15cm}
+          {\small ``Integrated Community-based Management of High Value Mountain Ecosystems in Southern Kyrgyzstan for Multiple Benefits''\par}
+          \vfill
+          {\fontsize{6}{7}\selectfont
+          \textcopyright{} 2026 University of St Andrews (Centre for Research into Ecological and Environmental Modelling, CREEM), Snow Leopard Trust, developed within the framework of the UNDP-GEF Pamir-Alai project. Licensed under CC BY 4.0. You may share and adapt these materials if you keep this credit and indicate any changes.\par}
+        }
+classoption: c
+urlcolor: teal
+execute:
+  error: false
+---
+
+```{r setup, include=FALSE}
+library(terra)
+source("code/helpers.R")
+knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE,
+ fig.align="center", dev="pdf", fig.crop=FALSE, fig.width=7, fig.height=2.4,
+ out.width="85%", out.height="1.3in",
+ fig.path="figures/02-sdm-practical-")
+chunk_hook <- knitr::knit_hooks$get("chunk")
+knitr::knit_hooks$set(chunk=function(x,options) {
+ out <- chunk_hook(x,options)
+ if(isTRUE(options$echo)) paste0("\n\\footnotesize\n\n",out,
+                                "\n\\normalsize\n") else out
+})
+```
+
+```{r local-library, include=FALSE}
+# A local maxnet install is supplied for validation on the author's machine.
+# On another machine install.packages(c("terra","maxnet","knitr")) once.
+if(dir.exists("code/R-library"))
+ .libPaths(c(normalizePath("code/R-library"),.libPaths()))
+out_dir <- "output/practical"
+dir.create(out_dir,recursive=TRUE,showWarnings=FALSE)
+```
+
+## Overview
+
+<!-- Sources: Hijmans & Elith (2023), chapters 1–6; Franklin (2009), chapter 10. Practical execution order, rather than a repetition of lecture theory. -->
+
+Fit SDMs to two simulated case studies:
+
+- Central Asian otter (1-D river network)
+- Desert monitor lizard (2-D survey area)
+
+Using the same 8-step workflow:
+
+1. Define the question and prediction region.
+2. Check occurrences and environmental rasters.
+3. Sample background and extract predictor values.
+4. Reserve a spatial test and check predictors.
+5. Fit the model and inspect its response curves.
+6. Evaluate withheld records.
+7. Map suitability and flag extrapolation.
+8. Export results with their interpretation.
+
+# Case study 1: Otters
+
+## 1. Define the otter prediction target
+
+<!-- Sources: Original simulation in code/simulate_sdm_data.R; Franklin (2009), chapters 4–5. The practical's independent raster exercise is not the small transect subset used to illustrate concepts in 01_sdms.qmd. Instructor preparation is saved separately in notes/instructor/prepare_otter_sdm.R and is not part of the student walkthrough. -->
+
+**Question:** which river-corridor cells have potentially suitable otter habitat?
+
+- We use a 500 m grid, riparian cover (%) and elevation (km) to fit a SDM.
+- Compare verified autumn presence locations with background.
+
+```{r otter-region, out.height="1.25in"}
+preview_river <- rast("data/river_mask.tif")
+map_plot(preview_river,"Prediction region: simulated river corridor")
+```
+
+## 2. Load the prepared otter presence data
+
+<!-- Sources: Hijmans & Elith (2023), sections 2.2–2.4. Independent SDM simulation; instructor-only preparation removes invalid and duplicate-cell records and transforms coordinates before class. -->
+
+```{r read-records, echo=TRUE}
+records <- read.csv("data/otter_sdm_presences.csv")
+head(records[, c("record_id", "x", "y")], 3)
+```
+
+- There are **`r nrow(records)` verified simulated sign locations**, from autumn
+2025.
+- One record per 500 m cell (duplicates removed). 
+- Coordinates are in metres:
+`x` is easting; `y` is northing, in UTM zone 43N (EPSG:32643).
+
+
+## 2. Load and check the raster layers
+
+<!-- Sources: Hijmans & Elith (2023), section 4.1; terra rast/compareGeom documentation. All environmental values synthetic. -->
+
+```{r rasters, echo=TRUE}
+# load raster layers
+env <- rast("data/environment.tif")
+river <- rast("data/river_mask.tif")
+names(env)
+```
+
+```{r rasters2, echo=TRUE}
+res(env) # check resolution
+stopifnot(compareGeom(env, river)) # check if same CRS
+```
+
+```{r rasters3, echo=TRUE}
+# `vect()` turns `x` and `y` into map points.
+pres <- vect(records, geom=c("x", "y"), crs=crs(env)) 
+```
+
+- `cover`: percent riparian cover; `elev_km`: elevation in kilometres;
+`temperature`: in degrees C.
+- `river` is a mask with 1's in river-corridor cells and missing elsewhere.
+
+## 2. Inspect the cleaned presence map
+
+<!-- Sources: Hijmans & Elith (2023), chapter 2; Franklin (2009), chapter 4. Original schematic. -->
+
+```{r clean-map, out.width="60%"}
+map_plot(river,"Verified presence cells (simulated)",pres)
+```
+
+Look for:
+
+- isolated errors, 
+- dense clusters,
+- large unsampled areas.
+
+## 3. Sample background within the corridor
+
+<!-- Sources: Hijmans & Elith (2023), chapter 3; Merow et al. (2013), section III.A and III.D; terra spatSample documentation. -->
+
+```{r background, echo=TRUE}
+set.seed(410)
+bg <- spatSample(river, size=600, method="random",
+  na.rm=TRUE, as.points=TRUE, values=FALSE)
+nrow(bg)
+```
+
+- Background samples available river environments, including some recorded cells.
+- Uniform sampling is suitable recording effort was uniform; non-uniform recording may need non-uniform background selection.
+- `set.seed()` makes random sampling repeatable. 
+- Background locations are not unsuccessful surveys.
+
+## 3. Extract predictors and build the table
+
+<!-- Sources: Hijmans & Elith (2023), section 4.2; terra extract documentation. -->
+
+```{r extract, echo=TRUE}
+p <- extract(env, pres, ID=FALSE)
+b <- extract(env, bg, ID=FALSE)
+p$pb <- 1; b$pb <- 0
+p$x <- crds(pres)[,1]; b$x <- crds(bg)[,1]
+p$y <- crds(pres)[,2]; b$y <- crds(bg)[,2]
+dat <- rbind(p,b)
+stopifnot(all(complete.cases(dat)))
+```
+
+`ID=FALSE` prevents an extraction row number becoming a predictor.
+`pb=0` means background. Missing habitat values must be investigated.
+
+## 3. Check the table before fitting
+
+<!-- Original student checkpoint. Presence/background labels match the theory lecture; no survey absence is inferred. -->
+
+```{r table-check, echo=TRUE}
+head(dat[, c("pb", "cover", "elev_km")], 3)
+```
+
+```{r table-check2, echo=TRUE}
+table(dat$pb)
+```
+
+**Discuss:** if a background location has excellent habitat, should its label
+change to 1?
+
+## 4. Reserve a spatial test dataset before fitting
+
+<!-- Sources: Franklin (2009), chapters 6 and 9; Hijmans & Elith (2023), chapter 7; Roberts et al. (2017). Single predeclared split; not a validated otter spacing rule. -->
+
+```{r holdout, echo=TRUE}
+train <- subset(dat, x < 329000)
+test <- subset(dat, x >= 330000)
+# 329000 <= x < 330000 is a 1 km buffer.
+rbind(training=table(train$pb),test=table(test$pb))
+```
+
+- `subset()` keeps rows meeting a condition. 
+- Both presences and background are split. No cell enters both sets.
+- Points with $329000\leq x < 330000$ are not included in train or test.
+- This buffer is to avoid any spatial dependence between train and test sets.
+- Buffer size is illustrative here; must be chosen with study system in mind.
+
+## 4. Inspect the training and test regions
+
+<!-- Sources: Franklin (2009), chapter 9; Hijmans & Elith (2023), chapter 7. Original split diagram. -->
+
+```{r holdout-map}
+map_plot(river,"Western training region; eastern test region")
+rect(329000,4370000,330000,4400000,col=adjustcolor('grey40',.4),border=NA)
+points(train$x,train$y,pch=16,col=bl,cex=.4)
+points(test$x,test$y,pch=16,col=rd,cex=.4)
+abline(v=c(329000,330000),lty=2)
+```
+
+## 4. Check predictors in the training data
+
+<!-- Sources: Dormann (2011), collinearity; Hijmans & Elith (2023), section 4.2; Franklin (2009), chapter 5. -->
+
+```{r cor, echo=TRUE}
+round(cor(train[,c("cover","elev_km","temperature")]),2)
+```
+
+Elevation and temperature contain almost the same information here.
+We retain **elevation**, as planned, and leave temperature out.
+
+- Use ecological reasoning and data quality as well as correlation.
+- Do not change predictor choices repeatedly after looking at test performance.
+
+## 5. Fit a simple starting model
+
+<!-- Sources: Hijmans & Elith (2023), section 6.3.1; Franklin (2009), section 6.3; R stats::glm documentation. -->
+
+```{r linear, echo=TRUE}
+m_linear <- glm(pb ~ cover + elev_km,
+  family=binomial(), data=train)
+stopifnot(m_linear$converged)
+```
+
+- `glm()` fits a generalised linear model.
+- `binomial()` selects logistic regression for the 0/1 response.
+- `data=train` protects the withheld records.
+
+The fitted value distinguishes presence rows from background rows.
+
+
+## 5. Compare a quadratic model
+
+<!-- Sources: Hijmans & Elith (2023), sections 5.1 and 6.3; Dormann (2011), model formulation/simplification. Predeclared main model avoids test-based tuning. -->
+
+```{r quadratic, echo=TRUE}
+m_curve <- glm(pb ~ cover + elev_km + I(elev_km^2),
+  family=binomial(), data=train)
+AIC(m_linear, m_curve)
+```
+
+- `I(elev_km^2)` adds a squared term so the elevation effect can be curved.
+- These models use exactly the same rows and background sample.
+- Lower AIC indicates relative support, not proof of good fit to data.
+- Here simpler linear model is preferred.
+
+## 5. Read a response curve
+
+<!-- Sources: Dormann (2011), section 13.2.3 and Figure 13.3; Hijmans & Elith (2023), section 5.2. Approximate conditional Wald interval. -->
+
+```{r cover-curve-code, echo=TRUE}
+# generate covariate values to predict pb for
+curve_data <- data.frame(
+  cover=seq(min(train$cover),max(train$cover),length.out=100),
+  elev_km=median(train$elev_km))
+# predictions of pb
+pr <- predict(m_curve, curve_data, type="link", se.fit=TRUE)
+# summaries to plot
+curve_data$score <- plogis(pr$fit)   # mean prediction
+curve_data$low <- plogis(pr$fit-1.96*pr$se.fit)  # LCL
+curve_data$high <- plogis(pr$fit+1.96*pr$se.fit) # UCL
+```
+
+- Calculates predictions across the observed cover range.
+- Hold other covariates (elevation) constant at its training median.
+- Curve shows how response changes as cover changes.
+
+## 5. Inspect both fitted response curves
+
+<!-- Sources: Dormann (2011), section 13.2.3; Franklin (2009), chapter 9. Original fitted simulation. -->
+
+```{r cover-curve}
+style(c(1,2)); z<-curve_data
+par(mar=c(4.5,4.6,2,.8), mgp=c(3.1,.7,0))
+plot(z$cover,z$score,type='n',ylim=range(z$low,z$high),
+ xlab='Riparian cover (%)',ylab='Presence-background score')
+polygon(c(z$cover,rev(z$cover)),c(z$low,rev(z$high)),
+ col=adjustcolor(bl,.2),border=NA)
+lines(z$cover,z$score,col=bl,lwd=3)
+rug(train$cover[train$pb==1],col=rd)
+e <- data.frame(cover=median(train$cover),
+ elev_km=seq(min(train$elev_km),max(train$elev_km),length.out=100))
+e$score <- predict(m_curve,e,type="response")
+plot(e$elev_km,e$score,type="l",lwd=3,col=bl,
+ xlab="Elevation (km)",ylab="Presence-background score")
+rug(train$elev_km[train$pb==1],col=rd)
+```
+
+- Each curve holds the other predictor at its training median. 
+- Red ticks show elevations where presences were recorded.
+- The shaded band is a 95% confidence interval.
+
+## 6. Evaluate model on the test dataset
+
+<!-- Sources: Hijmans & Elith (2023), section 5.3 (rank-based AUC); Franklin (2009), chapter 9. Helper in code/helpers.R. -->
+
+```{r test-predict, echo=TRUE}
+test$score <- predict(m_curve,test,type="response")
+p_test <- test$score[test$pb==1]
+b_test <- test$score[test$pb==0]
+auc_test <- auc_pb(p_test,b_test)
+round(auc_test,3)
+```
+
+AUC compares `r length(p_test)` withheld presence cells with
+`r length(b_test)` background locations in the eastern block.
+Here, 0.5 means chance ranking; 1 means every test presence ranks above
+every test background location. It is not the percentage of sites correct.
+
+## 6. Check what the AUC result supports
+
+<!-- Sources: Hijmans & Elith (2023), section 5.3; Franklin (2009), chapter 9. Original fitted results. -->
+
+```{r scores}
+style(); boxplot(list(Background=b_test,Presence=p_test),
+ col=c('grey80',bl),ylab='Presence-background score',
+ main=paste('Withheld eastern block: AUC =',round(auc_test,2)))
+```
+
+Overlap means some presences receive low scores and some background locations
+receive high scores. Remember background may contain otters.
+
+Held-out AUC is **`r round(auc_test,2)`**, with `r length(p_test)` test presences.
+This is weak discrimination: investigate records, predictors and sampling before
+using the map for habitat decisions.
+
+## 7. Predict suitability across the river network
+
+<!-- Sources: Hijmans & Elith (2023), sections 5.2 and 6.3; terra predict/mask documentation. -->
+
+```{r map-predict, echo=TRUE}
+predictors <- mask(env[[c("cover","elev_km")]],river)
+score_map <- predict(predictors,m_curve,
+  type="response",na.rm=TRUE)
+names(score_map) <- "presence_background_score"
+```
+
+- `terra::predict()` applies the fitted relationship cell by cell.
+- Predictor names match the model formula.
+- Covariate values outside the river mask don't get predictions.
+
+
+## 7. Flag extrapolation before interpreting the map
+
+<!-- Sources: SEEC 1 extrapolation/MESS; Hijmans & Elith (2023), section 6.5; Franklin (2009), chapters 9–10. Deliberately limited univariate range screen. -->
+
+```{r novelty-code, echo=TRUE}
+outside <- predictors[[1]] < min(train$cover) |
+           predictors[[1]] > max(train$cover) |
+           predictors[[2]] < min(train$elev_km) |
+           predictors[[2]] > max(train$elev_km)
+flagged <- global(outside,"sum",na.rm=TRUE)[1,1]
+flagged
+```
+
+- This simple screen flags at least one predictor outside its training range.
+- It cannot detect every novel **combination** of values within those ranges.
+- More complete environmental-overlap checks are advisable for real projects.
+
+## 7. Inspect the score and extrapolation maps
+
+<!-- Sources: Hijmans & Elith (2023), sections 5.2 and 6.5; Franklin (2009), chapter 10; original simulation. -->
+
+```{r score-map, out.width="100%", out.height="1.45in"}
+par(mfrow=c(1,2))
+map_plot(score_map,"Otter habitat score (simulated)",pres)
+map_plot(outside,"Outside training ranges",zlim=c(0,1))
+par(mfrow=c(1,1))
+```
+
+- Left: darker cells have higher scores; dots are presence records.
+- Right: TRUE flags areas where extrapolation is happening (`r flagged` river cells).
+
+These maps show relative habitat suitability, not abundance or occupancy.
+
+# Case study 2: Desert monitors
+
+## 1. Define a polygon-based prediction region
+
+<!-- Sources: Original simulation in code/simulate_monitor_sdm_data.R; Hijmans & Elith (2023), chapters 3–4. All region geometry and species records are fictional. -->
+
+**Question:** where is potentially suitable desert-monitor habitat within
+this hypothetical survey region?
+
+Use the same eight steps. Replace the river corridor with a polygon,
+and the habitat rasters with two climate layers on a 1 km grid.
+
+```{r monitor-region, fig.width=6, fig.height=3.1, out.width="72%", out.height="1.25in"}
+mon_region <- vect("data/monitor_sdm/survey_region.gpkg")
+mon_mask <- rast("data/monitor_sdm/region_mask.tif")
+par(mfrow=c(1,1))
+plot(mon_region,col='grey92',border=bl,axes=FALSE,
+ main='Hypothetical survey region',mar=c(.3,.3,1.5,.3))
+```
+
+## 2. Load the monitor records and BIOCLIM rasters
+
+<!-- Sources: Hijmans & Elith (2023), sections 2.5 and 4.1–4.2; WorldClim definitions https://www.worldclim.org/data/bioclim.html. Synthetic files generated by code/simulate_monitor_sdm_data.R, not downloaded WorldClim climate values. -->
+
+```{r monitor-load, echo=TRUE}
+# load rasters
+mon_raw <- read.csv("data/monitor_sdm/records.csv")
+mon_env <- rast("data/monitor_sdm/bioclim.tif")
+# transforms longitude/latitude into the raster's coordinates
+mon_pres <- project(vect(mon_raw,
+ geom=c("longitude","latitude"), crs="EPSG:4326"), crs(mon_env))
+# remove duplicate presences
+mon_cells <- cellFromXY(mon_env, crds(mon_pres))
+mon_pres <- mon_pres[!duplicated(mon_cells), ]
+# perform checks
+stopifnot(compareGeom(mon_env,mon_mask))
+stopifnot(all(!is.na(extract(mon_mask,mon_pres)[,2])))
+```
+
+- **`r nrow(mon_pres)`** presences after removing duplicates.
+- `bio6`: minimum temperature of coldest month (degrees C).
+- `bio12`: annual precipitation (mm). Every value is synthetic.
+- **Discuss**: what do the checks do?
+
+## 2. Inspect the climate maps and presence overlay
+
+<!-- Sources: Original climate gradients in code/simulate_monitor_sdm_data.R; Hijmans & Elith (2023), chapter 4. -->
+
+```{r monitor-climate, fig.height=3.1, out.width="100%", out.height="1.45in"}
+par(mfrow=c(1,2))
+map_plot(mon_env[["bio6"]],"BIO6 (degrees C)",mon_pres)
+lines(mon_region,lwd=1)
+map_plot(mon_env[["bio12"]],"BIO12 (mm)",mon_pres)
+lines(mon_region,lwd=1)
+par(mfrow=c(1,1))
+```
+
+Check alignment, units, missing cells and predictor coverage.
+
+## 3. Sample polygon background and extract values
+
+<!-- Sources: Hijmans & Elith (2023), chapters 3–4; terra spatSample/extract. Uniform background matches the simulation's constant recording effort. -->
+
+Here we create the presence and background data by:
+
+- sampling the background points and adding covariates,
+- extracting presence locations and adding covariates,
+- combining the two
+
+```{r monitor-background, echo=TRUE}
+set.seed(420)
+# construct background dataset
+mon_bg <- spatSample(mon_mask, 1200, method="random",
+ na.rm=TRUE, as.points=TRUE, values=FALSE)
+mb <- extract(mon_env, mon_bg, ID=FALSE)
+mb$pb <- 0  # add response
+mb$x <- crds(mon_bg)[,1]; mb$y <- crds(mon_bg)[,2]
+# construct presence dataset
+mp <- extract(mon_env, mon_pres,ID=FALSE)
+mp$pb <- 1  # add response
+mp$x <- crds(mon_pres)[,1]; mp$y <- crds(mon_pres)[,2]
+# combine
+mon_dat <- rbind(mp,mb)
+```
+
+## 4. Reserve a spatial test dataset 
+
+<!-- Sources: Franklin (2009), chapter 9; Hijmans & Elith (2023), chapter 7. Fixed demonstration split chosen before model fitting, not tuned to its AUC. -->
+
+```{r monitor-split, echo=TRUE}
+mon_train <- subset(mon_dat,x < 550000)
+mon_test <- subset(mon_dat,x >= 552000)
+# 550000 <= x < 552000: a 2 km buffer.
+rbind(training=table(mon_train$pb),test=table(mon_test$pb))
+round(cor(mon_train[,c("bio6","bio12")]),2)
+```
+
+- Check that training data represent the test region's climates.
+- Real projects need several spatial folds.
+
+## 5. Fit SDMs
+
+<!-- Sources: Hijmans & Elith (2023), section 6.3; Franklin (2009), chapter 6. Intermediate optima are deliberately built into the simulation; no empirical claim about monitors. -->
+
+```{r monitor-fit, echo=TRUE}
+mon_model <- glm(pb ~ bio6 + I(bio6^2) +
+                      bio12 + I(bio12^2),
+                 family = binomial(),
+                 data = mon_train)
+```
+
+- We simulated data so presences are concentrated in warm, relatively dry climates.
+- This is only for illustration; real relationships may be very different.
+
+## 5. Inspect the fitted climate responses
+
+<!-- Sources: Hijmans & Elith (2023), section 5.2; Dormann (2011), interpretation. Conditional fitted curves from synthetic data. -->
+
+```{r monitor-curves}
+style(c(1,2))
+par(mar=c(4.5,4.6,2,.8), mgp=c(3.1,.7,0))
+for(v in c("bio6","bio12")) {
+ curve_mon <- data.frame(bio6=median(mon_train$bio6),
+                        bio12=median(mon_train$bio12))
+ curve_mon <- curve_mon[rep(1,100), ]
+ curve_mon[[v]] <- seq(min(mon_train[[v]]),max(mon_train[[v]]),length.out=100)
+ plot(curve_mon[[v]],predict(mon_model,curve_mon,type="response"),
+      type='l',lwd=3,col=bl,ylab='Presence-background score',
+      xlab=if(v=="bio6") 'BIO6 (degrees C)' else 'BIO12 (mm)')
+ rug(mon_train[[v]][mon_train$pb==1],col=rd)
+}
+```
+
+- Each curve holds the other predictor at its training median.
+- Red ticks indicate covariate values at presence locations.
+
+## 6. Evaluate model on the test dataset
+
+<!-- Sources: Hijmans & Elith (2023), section 5.3; Franklin (2009), chapter 9. Same presence-background AUC definition as in the otter example. -->
+
+Monitor AUC compares `r sum(mon_test$pb == 1)` withheld presences with
+`r sum(mon_test$pb == 0)` background cells.
+
+```{r monitor-evaluate, echo=TRUE}
+mon_test$score <- predict(mon_model,mon_test,type="response")
+mon_p_test <- mon_test$score[mon_test$pb==1]
+mon_b_test <- mon_test$score[mon_test$pb==0]
+mon_auc <- auc_pb(mon_p_test,mon_b_test)
+round(c(mon_auc),3)
+```
+
+```{r monitor-scores}
+style(); boxplot(list(Background=mon_b_test,Presence=mon_p_test),
+ col=c('grey80',bl),ylab='Presence-background score',
+ main=paste('Test set AUC =',round(mon_auc,2)))
+```
+
+Strong separation between scores of presences and background locations.
+
+## 7. Predict across the polygon and flag extrapolation
+
+<!-- Sources: Hijmans & Elith (2023), sections 5.2 and 6.5; terra predict/mask. Range screening matches the otter procedure, not a full multivariate novelty test. -->
+
+Predict habitat suitability across the survey region:
+
+```{r monitor-map-code, echo=TRUE}
+mon_score <- mask(predict(mon_env,mon_model,
+ type="response",na.rm=TRUE), mon_mask)
+names(mon_score) <- "presence_background_score"
+```
+
+Flag test areas with covariate values outside the training data:
+
+```{r monitor-map-code2, echo=TRUE}
+mon_outside <- mon_env[["bio6"]] < min(mon_train$bio6) |
+ mon_env[["bio6"]] > max(mon_train$bio6) |
+ mon_env[["bio12"]] < min(mon_train$bio12) |
+ mon_env[["bio12"]] > max(mon_train$bio12)
+mon_outside <- mask(mon_outside, mon_mask)
+```
+
+## 7. Inspect the score and extrapolation maps
+
+<!-- Sources: Original evaluated monitor model; Franklin (2009), chapter 10. Map fitted on training records only. -->
+
+```{r monitor-map, fig.height=3.4, out.width="100%", out.height="1.45in"}
+par(mfrow=c(1,2))
+map_plot(mon_score,"Monitor habitat score (simulated)",mon_pres)
+lines(mon_region,lwd=1)
+map_plot(mon_outside,"Training-range extrapolation",zlim=c(0,1))
+lines(mon_region,lwd=1)
+par(mfrow=c(1,1))
+```
+
+- **Left**: Darker cells have higher relative scores. Dots are supplied records.
+- **Right**: True flags a value outside a training range.
+
+# Export the results
+
+## 8. Export the score and extrapolation maps
+
+<!-- Sources: Hijmans & Elith (2023), reproducible R workflow; Franklin (2009), chapter 10. Current outputs use output/practical/. -->
+
+```{r export-maps, echo=TRUE}
+writeRaster(score_map,
+ file.path(out_dir,"otter_score.tif"),overwrite=TRUE)
+writeRaster(outside,
+ file.path(out_dir,"otter_extrapolation.tif"),overwrite=TRUE)
+writeRaster(mon_score,
+ file.path(out_dir,"monitor_score.tif"),overwrite=TRUE)
+writeRaster(mon_outside,
+ file.path(out_dir,"monitor_extrapolation.tif"),overwrite=TRUE)
+```
+
+The four GeoTIFF files can be opened in a GIS. Keep each score map with
+its extrapolation flag. `overwrite=TRUE` replaces earlier exercise outputs.
+
+## 8. Save the models and evaluation records
+
+<!-- Sources: Hijmans & Elith (2023), reproducible R workflow; Franklin (2009), chapter 10. -->
+
+```{r export-tables, echo=TRUE}
+saveRDS(list(otter=m_curve,monitor=mon_model),
+        file.path(out_dir,"glm_models.rds"))
+write.csv(test,
+ file.path(out_dir,"otter_test.csv"),row.names=FALSE)
+write.csv(mon_test,
+ file.path(out_dir,"monitor_test.csv"),row.names=FALSE)
+writeLines(capture.output(sessionInfo()),
+ file.path(out_dir,"sessionInfo.txt"))
+```
+
+Keep the question, region, units, background, model formula, spatial test,
+AUC and limitations with the exported files.
+
+# Optional: compare GLM with MaxEnt
+
+## Optional: fit MaxEnt to the same training data
+
+<!-- Sources: Hijmans & Elith (2023), section 6.4.1; Merow et al. (2013), features/regularisation; official maxnet documentation. R implementation needs no Java. -->
+
+```{r maxnet-fit, echo=TRUE, eval=requireNamespace("maxnet", quietly=TRUE)}
+library(maxnet)
+xvars <- c("cover","elev_km")
+mx <- maxnet(train$pb,train[,xvars],
+  f=maxnet.formula(train$pb,train[,xvars],classes="lq"),
+  regmult=1)
+```
+
+- `lq` allows linear and quadratic features.
+- `regmult` controls regularisation.
+- This uses the same training data, predictors and background as the GLM.
+- These settings are a starting point, not validated settings.
+
+## Optional: evaluate MaxEnt using the same test
+
+<!-- Sources: Hijmans & Elith (2023), section 5.3; Merow et al. (2013), model complexity/output scale; maxnet predict documentation. -->
+
+```{r maxnet-test, echo=TRUE, eval=requireNamespace("maxnet", quietly=TRUE)}
+mx_test <- as.numeric(predict(mx,test[,xvars],
+                              type="link",clamp=FALSE))
+mx_auc <- auc_pb(mx_test[test$pb==1],mx_test[test$pb==0])
+round(c(GLM=auc_test,MaxEnt=mx_auc),3)
+```
+
+- AUC needs rankings, so predictions can be on link or response scale.
+- Numerical GLM and MaxEnt scores as not comparable.
+- Do not choose MaxEnt settings based on the test data (use another dataset for this).
+- Do not choose preferred models based on the test data (use another dataset for this).
+- No difference in predictive accuracy of the two approaches here.
+
+```{r metadata-v2, include=FALSE}
+writeLines(c("SIMULATED SDM PRACTICAL OUTPUTS; NOT LOCAL SPECIES ESTIMATES",
+ "Both models predict presence-background scores, not occupancy probabilities.",
+ "Otter inputs: data/; 500 m EPSG:32643 grid; cover (%) and elevation (km).",
+ "Otter background: 600 uniform river cells; training x < 329000, test x >= 330000.",
+ "Monitor inputs: data/monitor_sdm/; 1 km EPSG:32643 grid within fictional polygon.",
+ "Monitor predictors: synthetic BIO6 (degrees C) and BIO12 (mm).",
+ "Monitor background: 1200 uniform polygon cells; training x < 550000, test x >= 552000.",
+ "Mapped GLMs are the evaluated training models; they are not refitted on test data.",
+ paste("Otter held-out presence-background AUC:",round(auc_test,4)),
+ paste("Monitor held-out presence-background AUC:",round(mon_auc,4)),
+ paste("Optional otter MaxEnt held-out AUC:",
+       if(exists("mx_auc")) round(mx_auc,4) else "not run"),
+ "Extrapolation layers: 1 outside a predictor training range, 0 otherwise.",
+ "Range screens do not identify all novel combinations of predictor values.",
+ "Mask NA means outside the stated comparison/prediction region.",
+ "Cover response interval is conditional on the GLM, not all sources of uncertainty.",
+ "The stronger monitor signal is a simulation assumption, not species knowledge.",
+ "Inputs and simulated recording intensity generated independently of fitted models.",
+ "Single spatial splits demonstrate the procedure; use repeated and independent evaluation."),
+ file.path(out_dir,"metadata.txt"))
+```

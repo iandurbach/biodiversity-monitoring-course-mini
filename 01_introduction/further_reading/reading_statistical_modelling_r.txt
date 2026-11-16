@@ -1,0 +1,53 @@
+STATISTICAL MODELLING AND R
+===========================
+
+Bibliography and linked learning resources extracted from the course QMDs.
+QMDs reviewed:
+  02_intro_to_stat_r.qmd
+  02_intro_to_stat_r_notes.qmd
+Checked: 27 October 2026.
+
+LITERATURE
+----------
+
+[1] Campbell, H., Bluck, T., Curry, E., Harris, D., Pike, B. & Wright, B. (2024). Should
+    we still teach or learn coding? A postgraduate student perspective on the use of
+    large language models for coding in ecology and evolution. Methods in Ecology and
+    Evolution, 15(10), 1767-1770.
+    DOI: https://doi.org/10.1111/2041-210x.14396
+
+[2] Marques, T., Photopoulou, T. & Scott-Hayward, L. (n.d.). R Essentials; Stats
+    Essentials. University of St Andrews. Teaching materials credited jointly in the
+    course QMDs.
+
+[3] Wickham, H., Çetinkaya-Rundel, M. & Grolemund, G. (2023). R for Data Science, 2nd
+    ed. O’Reilly Media. Chapters: Data transformation; Workflow: scripts and projects.
+
+[4] McNeill, M. (2015). Base R Cheat Sheet. RStudio. Updated March 2015.
+    URL: https://rstudio.github.io/cheatsheets/base-r.pdf
+
+[5] Posit (n.d.). Data transformation with dplyr: Cheatsheet.
+    URL: https://rstudio.github.io/cheatsheets/data-transformation.pdf
+
+[6] Kross, S., Carchedi, N., Bauer, B. & Grdina, G. (n.d.). swirl: Learn R, in R.
+    Interactive R programming and data-science courses.
+    DOI: https://doi.org/10.32614/cran.package.swirl
+    URL: https://swirlstats.com/
+
+[7] R Core Team (n.d.). R: A Language and Environment for Statistical Computing. R
+    Foundation for Statistical Computing, Vienna, Austria. Project and CRAN
+    documentation.
+    URL: https://www.r-project.org/
+    URL: https://cran.r-project.org/
+
+[8] Posit (n.d.). RStudio IDE User Guide: Pane Layout; Getting Started.
+    URL: https://docs.posit.co/ide/user/ide/guide/ui/ui-panes.html
+    URL: https://posit.co/download/rstudio-desktop/
+
+[9] Wickham, H., François, R., Henry, L., Müller, K. & Vaughan, D. (n.d.). dplyr: A
+    Grammar of Data Manipulation. Package documentation.
+    DOI: https://doi.org/10.32614/cran.package.dplyr
+    URL: https://dplyr.tidyverse.org
+
+[10] Creative Commons (n.d.). Attribution 4.0 International (CC BY 4.0). Licence deed.
+    URL: https://creativecommons.org/licenses/by/4.0/

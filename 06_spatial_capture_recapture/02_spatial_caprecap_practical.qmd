@@ -1,0 +1,1554 @@
+---
+title: Spatial Capture Recapture -- Practical
+subtitle: Biodiversity Monitoring Course, Module 6
+fontsize: 10pt
+format:
+  beamer:
+    theme: metropolis
+    incremental: false
+    slide-level: 2
+    pdf-engine: xelatex
+    syntax-highlighting: tango
+    include-in-header:
+      text: |
+        \usepackage{tikz}
+        \setbeamerfont{normal text}{size=\normalsize}
+        \setbeamerfont{itemize/enumerate body}{size=\normalsize}
+        \setbeamerfont{itemize/enumerate subbody}{size=\normalsize}
+        \setbeamerfont{itemize/enumerate subsubbody}{size=\normalsize}
+        \setlength{\parskip}{0.25em}
+        \setkeys{Gin}{keepaspectratio}
+        \newcommand{\compactcode}{\fontsize{6}{7}\selectfont}
+        \newcommand{\roomyitems}[1][0.45em]{\renewcommand{\tightlist}{\setlength{\itemsep}{#1}\setlength{\parskip}{0pt}}}
+        \setbeamertemplate{title page}{%
+          \centering
+          \includegraphics[width=0.27\textwidth,height=1.1cm,keepaspectratio]{../logos/01-standard-black-text.png}\hfill
+          \includegraphics[width=0.40\textwidth,height=1.1cm,keepaspectratio]{../logos/creem-long.png}\hfill
+          \includegraphics[width=0.19\textwidth,height=1.1cm,keepaspectratio]{../logos/SLT-Logo-2016-300dpi-Regular.jpg}\par
+          \vspace{0.35cm}
+          {\LARGE\inserttitle\par}
+          \vspace{0.35cm}
+          {\normalsize\insertsubtitle\par}
+          \vspace{0.25cm}
+          {\small UNDP-GEF Project\par}
+          \vspace{0.15cm}
+          {\small ``Integrated Community-based Management of High Value Mountain Ecosystems in Southern Kyrgyzstan for Multiple Benefits''\par}
+          \vfill
+          {\fontsize{6}{7}\selectfont
+          \textcopyright{} 2026 University of St Andrews (Centre for Research into Ecological and Environmental Modelling, CREEM), Snow Leopard Trust, developed within the framework of the UNDP-GEF Pamir-Alai project. Licensed under CC BY 4.0. You may share and adapt these materials if you keep this credit and indicate any changes.\par}
+        }
+classoption: c
+urlcolor: teal
+---
+
+```{r setup, include=FALSE}
+# Adapted closely from Ali Johnston's MT5751 L21 SCR I demo.
+# Preparation and simulation are in code/prepare_intro_practical.R;
+# Students use secr and sf::st_read for the survey boundary, plus prepared TRI inputs.
+# Nelder-Mead accommodates the original raster scale of TRI without trial-step overflow.
+library(secr)
+library(knitr)
+preview_captures <- read.csv("data/practical/snow_leopard_captures.csv")
+knitr::opts_knit$set(global.par = TRUE)
+knitr::opts_chunk$set(fig.path = "figures/02-scr-", dev = "pdf",
+                      echo = TRUE, warning = FALSE, message = FALSE,
+                      size="scriptsize")
+def.chunk.hook <- knitr::knit_hooks$get("chunk")
+knitr::knit_hooks$set(chunk = function(x, options) {
+  x <- def.chunk.hook(x, options)
+  if (options$size != "normalsize")
+    paste0("\n\\begingroup\n\\", options$size, "\n\n", x, "\n\\endgroup\n") else x
+})
+hook_output <- knit_hooks$get("output")
+knit_hooks$set(output = function(x, options) {
+  lines <- options$output.lines
+  if (is.null(lines)) return(hook_output(x, options))
+  x <- strsplit(x, "\n")[[1]]
+  if (length(lines) == 1) {
+    if (length(x) > lines) x <- c(head(x, lines), "...")
+  } else {
+    x <- c("...", x[intersect(lines, seq_along(x))], "...")
+  }
+  hook_output(paste(c(x, ""), collapse = "\n"), options)
+})
+```
+
+# Collecting data for SCR
+
+## Overview
+
+1. Define the survey region and analysis goals.
+2. Decide on detector locations and effort.
+    a. Macro-level: which landscapes to survey?
+    b. Micro-level: where to place detectors within them?
+3. Agree and follow a data collection protocol.
+    a. Mainly camera traps; briefly, genetic sampling.
+4. Manage the data for analysis.
+    a. Individual identification, records and GIS layers.
+
+**Aim:** a starting framework for SCR surveys in Kyrgyzstan.
+A full survey also needs local planning, a pilot and specialist advice.
+
+<!-- Main source throughout this field section:
+Sharma, K., Borchers, D., Mackenzie, D., Durbach, I., Sutherland, C., Nichols, J.,
+Lovari, S., Zhi, L., Ale, S., Khan, A. A., Modaqiq, W., McCarthy, T.,
+Alexander, J. S. & Mishra, C. (2020). PAWS Guidelines. GSLEP.
+Further reading: further_reading/PAWS-guidelines-2020.pdf.
+Page references below are PRINTED pages, not PDF viewer page numbers.
+The overview combines region and goals into one planning step, retaining the
+four-step field workflow. General principles are adapted from the snow-leopard
+guidelines; species-specific figures are examples, not universal prescriptions.
+Kyrgyzstan examples and exercises below are teaching
+adaptations, not a prescribed national monitoring protocol. -->
+
+## 1. Start with a question you can answer
+
+\roomyitems
+
+- **Example:** how many animals of our target species have activity centres
+  in this mapped landscape during this survey season?
+- Agree which animals count (e.g. adults or independent animals), and choose
+  a method that can identify individuals reliably.
+- Is the priority abundance, habitat differences, or change over time?
+  Each needs a suitable design and enough data.
+- For trends, plan repeat surveys in comparable seasons, with consistent
+  boundaries and protocols.
+
+\alert{The number of different individuals detected is a minimum count,
+not an estimate of all animals present.}
+
+<!-- Sources: PAWS (2020), pp. 9--13 (region, goals, resources) and
+pp. 44--47 (SCR inference). The independent-animal target is an example to
+agree before sampling, not a claim that dependent young can never be modelled.
+Abundance here refers to activity centres inside a defined reporting region;
+animals photographed near its edge may have centres outside it. -->
+
+## 1. Draw the boundary; check what is feasible
+
+\roomyitems
+
+- Map the region of interest, habitat, valleys, ridges, settlements and access.
+  A reserve boundary need not be a biological boundary.
+- Include less promising habitat; surveying only known strongholds limits
+  where results can be applied.
+- Plan with rangers and local communities: permissions, access, livestock
+  movements, camera security and safe routes.
+- Budget for deployment, checks, retrieval, image identification and analysis;
+  for genetics, include laboratory costs and likely failed samples.
+
+**Decide before fieldwork:** who coordinates the survey, manages the data
+and helps with the analysis?
+
+<!-- Source: PAWS (2020), pp. 9--13, 20--23, 25--30.
+Community coordination, mountain access and team responsibilities are practical
+teaching adaptations for Kyrgyzstan. Distinguish access restrictions from
+unsuitable habitat: an inaccessible valley is not an empty valley.
+Obtain any required reserve/border access and sample permissions locally. -->
+
+## 2. Macro-level design: choose landscapes fairly
+
+\roomyitems
+
+- For a single landscape, plan coverage of that landscape.
+- For a much larger region, select several survey areas using a
+  **representative sampling design**, with statistical help.
+- Map candidate areas first; include different habitats, human pressures
+  and expected animal densities.
+- Use random or spatially balanced selection, possibly within strata;
+  agree how inaccessible selections will be handled.
+
+\alert{A few well-studied reserves cannot automatically represent
+all of Kyrgyzstan.}
+
+<!-- Sources: PAWS (2020), pp. 14--19, 23--24;
+GSLEP, Macro Level Design Tools:
+https://globalsnowleopard.org/gslep-projects/paws/paws-resources/macro-level-design-tools/
+PAWS discusses macro-design mainly for regions >10,000 km2; this is a scale
+guide, not a threshold that makes convenience sampling valid below it.
+Retain inclusion probabilities and departures from the selected sample.
+National extrapolation and combining arrays require support beyond this class. -->
+
+## 2. Micro-level design: seek spatial recaptures
+
+\roomyitems[0.3em]
+
+- Spread stations across the selected landscape and its habitat types.
+- Keep neighbouring stations close enough that the **same individual can be
+  detected at several stations**: a spatial recapture.
+- Start with spacing around **1--2$\sigma$**, where $\sigma$ describes the
+  species' movement scale. Use local studies or pilot data to guide this.
+- Low detection may favour closer spacing: for elusive snow leopards,
+  PAWS suggests **3--5 km**. Test this locally, including for smaller-ranging animals.
+- Balance spatial recaptures against landscape coverage; avoid both a tiny
+  dense array and widely isolated stations.
+- Simulation can be an important tool here.
+
+
+<!-- Sources: PAWS (2020), pp. 20--23;
+Durbach, I., Micro-level survey design for secr, GSLEP/SLT cheatsheet:
+https://globalsnowleopard.org/wp-content/uploads/2020/09/How-to-choose-where-to-setup-camera-traps-survey-design_-.pdf
+The cheatsheet suggests 1--2 sigma. For a half-normal detection function,
+sigma is the spatial scale of declining detection, related to space use;
+it is not a daily travel distance or a home-range radius. It also depends on
+the detection-function parameterisation and survey period.
+Efford, M. G. & Boulanger, J. (2019). Fast evaluation of study designs for
+spatially explicit capture--recapture. Methods in Ecology and Evolution 10:
+1529--1545. https://doi.org/10.1111/2041-210X.13239
+Closer spacing may be useful when baseline detection is low; PAWS's 3--5 km
+example is not necessarily below 1--2 sigma at every snow leopard site.
+Durbach, I., Borchers, D., Sutherland, C. & Sharma, K. (2021).
+Fast, flexible alternatives to regular grid designs for spatial capture--recapture.
+Methods in Ecology and Evolution 12: 298--310.
+https://doi.org/10.1111/2041-210X.13517
+Nawaz, M. A., Khan, B. U., Mahmood, A., Younas, M., Din, J. U. &
+Sutherland, C. (2021). An empirical demonstration of the effect of study design
+on density estimations. Scientific Reports 11: 13104.
+https://doi.org/10.1038/s41598-021-92361-2
+Spacing is not a universal prescription. The smallest relevant movement scale
+matters; a layout suited only to wide-ranging males can miss female recaptures.
+Do not substitute walking-route distance for model distance without discussing
+the detection model. Non-Euclidean models are beyond this introduction. -->
+
+## 2. Same equipment; different information
+
+```{=latex}
+\begin{center}
+\begin{tikzpicture}[x=0.72cm,y=0.72cm]
+\foreach \xx/\label in {0/{Too concentrated},4.5/{Too dispersed},9/{Balance to test}} {
+  \draw[gray] (\xx,0) rectangle +(4,3.6);
+  \node[font=\small] at (\xx+2,4) {\label};
+}
+\foreach \xx/\yy in {1.5/1.4,2/1.4,2.5/1.4,1.5/2,2/2,2.5/2}
+  \fill[teal] (\xx,\yy) circle (0.09);
+\foreach \xx/\yy in {4.8/0.4,6.5/0.4,8.2/0.4,4.8/3.2,6.5/3.2,8.2/3.2}
+  \fill[teal] (\xx,\yy) circle (0.09);
+\foreach \xx/\yy in {9.7/0.9,10.5/0.9,10.1/1.7,11.8/2,12.6/2,12.2/2.8}
+  \fill[teal] (\xx,\yy) circle (0.09);
+\foreach \xx in {2,6.5,10.1,12.2}
+  \draw[orange,thick] (\xx,1.7) circle (0.9);
+\node[align=center,font=\footnotesize] at (2,-0.65) {Limited landscape\\coverage};
+\node[align=center,font=\footnotesize] at (6.5,-0.65) {Few opportunities\\for spatial recaptures};
+\node[align=center,font=\footnotesize] at (11,-0.65) {Coverage plus\\nearby neighbours};
+\end{tikzpicture}
+\end{center}
+```
+
+\small
+Dots: stations. Circles: illustrative animal space use.
+Schematic only; no scale or recommended cluster layout.
+
+<!-- Sources: PAWS (2020), pp. 20--23, especially Fig. 6;
+Durbach et al. (2021), https://doi.org/10.1111/2041-210X.13517.
+Original teaching schematic, not a copied figure or an optimized design.
+Six stations in each panel. Clusters can help but do not guarantee adequate
+sample size, habitat representation, or estimation of movement scale. -->
+
+## 2. Choose a season and a realistic duration
+
+\roomyitems
+
+- Use one reasonably short session for a closed-population analysis:
+  few births, deaths or permanent changes in membership; reasonably stable
+  activity centres.
+- Animals can move between stations and across the survey boundary:
+  **ordinary movement is expected**.
+- Choose duration for the species' life history and seasonal movements;
+  balance enough detections against closure and practical access.
+- Deploy stations in a coordinated period. **Record detector start/end dates
+  and failures** so unequal effort can be modelled.
+
+Longer deployment may add photographs but weaken the closure assumption.
+
+<!-- Source: PAWS (2020), pp. 5--8, 21--22, 33--34.
+PAWS's example combines >500 km2, 30--40 stations and 2--3 months. These are
+experience-based starting values, not independent minimum requirements or a
+guarantee of estimability. Duration must be chosen for the target species,
+not transferred unchanged from snow leopards. Stable activity centres are part of the introductory closed SCR
+model. Multi-season/open-population models need additional planning. -->
+
+## 2. Pilot before committing the full budget
+
+\small
+
+- Test access, installation time, battery life and image quality in the
+  conditions expected during the main survey.
+- Check how many **identifiable individuals** are recorded and how many
+  appear at **more than one station**.
+- Review gaps in coverage and unsuccessful sites; few detections may mean
+  low density, poor placement, equipment failure or insufficient effort.
+- Ask an SCR analyst to compare feasible layouts and durations using pilot
+  estimates and simulations, including uncertainty in those estimates.
+
+**Before scaling up:** agree what precision is useful for the management question.
+
+\vspace{.5em}
+
+\alert{A rough rule-of-thumb is that the full survey should generate \textbf{at least 10 recaptures and 10 individuals} (or else confidence intervals will be very wide)}
+
+<!-- Sources: PAWS (2020), pp. 2--4 (pilot and feedback), 11--13, 20--23;
+Durbach et al. (2021), https://doi.org/10.1111/2041-210X.13517.
+No universal minimum number of individuals or spatial recaptures is taught. Precision
+and bias depend jointly on density, detection, movement, effort and design.
+A small pilot may give imprecise parameter estimates: explore a range of values. -->
+
+## 3. Place each camera for identifiable images
+
+\roomyitems[0.3em]
+
+- Use randomization to decide on **broad areas** to locate arrays (i.e. 1x1km grid cell), but within each selected grid cell, choose the camera location **most likely to give a detection**.
+- Use local knowledge and signs to choose routes or features used by the target species.
+- Aim for clear views of identifying marks (e.g. flank patterns); test height,
+  angle and distance, including likely travel directions.
+- Adjust placement to body size, behaviour, camera model and terrain;
+  inspect test images in the conditions expected during the survey.
+- Use rapid image bursts, short trigger delays and suitable sensitivity;
+  check night images and avoid glare or moving vegetation.
+
+<!-- Source: PAWS (2020), pp. 25--27, generalised to the target species.
+PAWS's 2--10 m camera-to-animal distance is a snow leopard example, not a
+universal operating distance. Walk tests assess triggering/framing but must
+also account for the target animal's height and likely speed.
+PAWS suggests at least five rapid-fire photographs, high sensitivity and no
+delay between encounters. Teach the purpose rather than impose settings on
+all models: false triggers, battery use, snow and night blur must be tested.
+Targeting trails within a representative array is distinct from selecting only
+high-density landscapes. Record station microhabitat to model detection. -->
+
+## 3. One camera or a pair at each station?
+
+\roomyitems
+
+- For species identified by flank patterns, paired cameras can photograph
+  both sides during the same passage.
+  Offset them to avoid facing flash directly into the other camera.
+- Single cameras allow more stations with the same budget, if they provide
+  enough views of the marks needed to identify that species.
+- Test the trade-off in the pilot: how often can you assign a reliable ID?
+- **A left-only and a right-only photograph cannot automatically be
+  matched, or assumed to be different animals.**
+
+Use one station ID for a paired setup, with separate equipment IDs.
+Count each animal encounter once.
+
+<!-- Source: PAWS (2020), pp. 25--26, 34--36.
+Single-camera success in PAWS is conditional on image quality and behaviour;
+do not transfer its high identification rates to every camera or site.
+The teaching analysis assumes resolved individual identities. If identities
+remain one-sided, agree a consistent usable side or seek specialist partial-
+identity analysis; do not combine unmatched side catalogues as distinct animals.
+Offset pairs and separate device/station IDs are practical implementation advice. -->
+
+## 3. Log deployment, checks and failures
+
+\roomyitems
+
+- Assign permanent station and equipment IDs; record GPS coordinates,
+  settings, habitat, installation time and a setup photograph.
+- Synchronise clocks and record the time zone. At checks, note clock drift
+  before resetting, and log card/battery changes.
+- Plan safe maintenance and retrieval routes; carry spares appropriate
+  for cold, snow and long access times.
+- Record when each camera was working, obstructed, removed or moved.
+  Give a relocated station a new location record.
+
+\alert{No photograph at an operating station differs from no functioning camera.}
+If the failure time is uncertain, record the uncertainty.
+
+<!-- Sources: PAWS (2020), pp. 25--27, 33--34.
+Clock/time-zone logs, failure uncertainty and equipment histories are practical
+extensions of PAWS's installation/removal and effort requirements.
+Do not infer uninterrupted operation merely because a camera was deployed.
+Agree a documented rule for uncertain downtime with the analyst. Avoid moving
+stations opportunistically during the main session without recording changes. -->
+
+## 3. Genetic sampling: plan the search routes
+
+\roomyitems
+
+- Use mapped cells or watersheds to distribute **scat-search transects**
+  across the landscape, including less promising habitat.
+- Within them, follow safe routes where the species leaves scats (e.g.
+  trails, riverbanks or marking sites); record omitted routes or sections.
+- Repeat agreed routes in a short survey window; aim to find the same
+  individuals at different locations.
+- Save the **actual GPS track**, search date, distance/time, observers and
+  conditions, including searches yielding no samples.
+
+These are SCR search routes: no perpendicular-distance measurements are needed.
+
+<!-- Sources: PAWS (2020), pp. 22--23, 29--30, 38--40;
+Efford, M. (2011). Estimation of population density by spatially explicit
+capture--recapture analysis of data from area searches. Ecology 92: 2202--2207.
+https://doi.org/10.1890/11-0332.1
+Efford, M. (2025). Polygon and transect detectors in secr 5.2.
+https://www.otago.ac.nz/density/pdfs/secr-polygondetectors.pdf
+PAWS gives 5 x 5 km cells as an example tied to movement scale, not a universal
+grid specification. Routes can be targeted locally while representing habitat
+across the landscape. They are not distance-sampling lines from Module 5. -->
+
+## 3. Genetic sampling: link samples to effort
+
+\roomyitems
+
+- Agree collection, preservation, transport and quality checks with the
+  laboratory **before** fieldwork; train everyone in the same protocol.
+- Give each sample a unique ID linked to its exact GPS location, date,
+  route/visit and field notes; prevent cross-contamination.
+- Old scats may pre-date the survey. Agree how to handle sample age and
+  prevent resampling the same deposit on later visits.
+- Hair stations need mapped locations, regular checks and records of
+  collection intervals and failures.
+- Species and individual identity require laboratory confirmation.
+
+
+<!-- Sources: PAWS (2020), pp. 22--23, 29--30, 38--40;
+Efford (2011), https://doi.org/10.1890/11-0332.1;
+Efford (2025), https://www.otago.ac.nz/density/pdfs/secr-polygondetectors.pdf.
+Do not prescribe storage chemistry in this introductory field lecture: arrange
+it with the receiving lab. Collection date is not deposition date; aged scats
+can violate closure. Discuss clearance/marking and revisit schedules locally.
+Keep exact sample coordinates and searched routes even if later discretizing
+into detector segments. Sample locations alone do not describe search effort.
+Joint camera/genetic models are beyond this tutorial. -->
+
+## 4. Individual IDs need a checked catalogue
+
+\roomyitems
+
+- Keep reference images for each individual, labelled by body side and marks.
+  Compare several clear markings, rather than overall appearance.
+- Have two trained reviewers assign IDs independently, then resolve
+  disagreements and record the evidence for each decision.
+- Retain uncertain images and mark them unresolved; seek expert review
+  rather than inventing an ID. Record exclusions from the analysis.
+- For genetic data, retain the laboratory's identity and quality decisions,
+  including samples that failed.
+
+\alert{Splitting one animal into several IDs will likely inflate abundance estimates.}
+
+<!-- Sources: PAWS (2020), pp. 34--40;
+Johansson, O., Samelius, G., Wikberg, E., Chapron, G., Mishra, C. & Low, M.
+(2020). Identification errors in camera-trap studies result in systematic
+population overestimation. Scientific Reports 10: 6393.
+https://doi.org/10.1038/s41598-020-63367-z
+PAWS recommends at least three comparable similarities/differences. Multiple
+markings and independent checking reduce risk but cannot guarantee error-free
+IDs. Never force uncertain matches based on proximity alone. Excluding many
+poor images can also affect detection and inference: discuss with the analyst.
+Keep a versioned catalogue and links back to the full image sequences. -->
+
+## 4. Keep linked records, including zero effort
+
+\small
+
+| Record | Minimum information |
+|:--|:--|
+| Station | Station ID, coordinates, habitat, equipment IDs |
+| Operation | Station ID, active intervals, checks, failures |
+| Encounter | Station ID, date/time, individual ID, source images |
+| Genetic search | Route/visit ID, GPS track, effort, sample IDs |
+
+- Archive original images, GPS files and field sheets; keep backed-up copies
+  separately from cleaned analysis tables.
+- Use consistent IDs and a data dictionary. Check every encounter against
+  the station location and operating dates.
+- A burst of images is **one passage**, not one encounter per image.
+  Agree encounter rules and analysis occasions with the analyst.
+
+<!-- Sources: PAWS (2020), pp. 33--40;
+Johansson et al. (2020), https://doi.org/10.1038/s41598-020-63367-z.
+For the count-detector tutorial, repeated photographs within a visit must not
+be counted as independent encounters. PAWS gives one hour as an example
+separation rule; a universal time gap does not establish independence.
+Retain raw timestamps to permit alternative event definitions and time effects.
+Unresolved encounters should remain in the archive with an explicit status.
+Restrict access to sensitive wildlife locations and photographs of people. -->
+
+## 4. Prepare maps for the question and the model
+
+\roomyitems
+
+- Keep the reporting boundary, detector locations and search tracks
+  as separate GIS layers.
+- Use a suitable **projected coordinate system in metres**, with its CRS
+  recorded; check GPS points on a map before analysis.
+- For density questions, obtain a few justified covariate layers, such as
+  terrain ruggedness, covering the whole modelled habitat region.
+- Record local detection covariates at stations, such as camera type
+  and trail/marking-site placement.
+- The analyst needs habitat around the array as well as within it:
+  animals with activity centres outside can still be detected inside.
+
+<!-- Sources: PAWS (2020), pp. 33, 40, 44--47.
+The reporting polygon, sampled area and model state-space/mask are distinct.
+The state-space buffer must be checked for adequacy, as in the R tutorial;
+do not clip it to an administrative boundary just because that is the reporting
+region. Use matching CRS, units, extent/resolution and documented provenance
+for covariates. Do not discard habitat solely for difficult access or no captures.
+Complex mountain movement and unsampled habitat may require more advanced
+models or a narrower scope of inference, with specialist advice. -->
+
+## Before the main survey: review the four steps
+
+\roomyitems
+
+1. **Question and region:** a mapped target population and a realistic budget.
+2. **Design and effort:** representative coverage, likely spatial recaptures,
+   a suitable season and a pilot reviewed with an SCR analyst.
+3. **Protocol:** trained teams, safe access, tested equipment and clear
+   rules for checks, failures and any genetic collection.
+4. **Data:** checked IDs, linked records, backups and GIS inputs.
+
+
+<!-- Sources: synthesis of PAWS (2020), pp. 9--40, and the sources above.
+Optional short discussion; 30 cameras is a hypothetical resource constraint,
+not a recommended sample size. Possible responses: retrieval still needs
+funding; pilot battery/storage performance; no opportunity to repair failures;
+single versus paired stations; deployment timing, staffing, access and safety;
+image processing and analysis costs. Ask whether the proposed design can meet
+the stated goal, rather than selecting a spacing from the camera count alone. -->
+
+
+# Analysis of SCR data with `secr`
+
+## Spatial capture-recapture -- `secr`
+
+`secr`, an `R` package for spatially explicit capture-recapture
+
+- model fitting by maximum likelihood
+    - efficient, nice properties
+    - AIC-based model selection & model averaging
+- Overview at
+    - \url{https://cran.r-project.org/web/packages/secr/vignettes/secr-overview.pdf}
+
+\vspace{0.5cm}
+
+```{r, eval=FALSE, size="scriptsize"}
+install.packages("secr") 
+library(secr)
+?secr # overview vignette
+```
+
+ 
+
+## Spatial capture-recapture -- `secr` {.t}
+
+Like any good `R` package, `secr` has a well-defined analysis workflow:
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=-0.5cm, yshift=-0.5cm] at (current page){
+\includegraphics[height=1.6in]{figures/secr}};
+\end{tikzpicture}
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=-4.38cm, yshift=-0.2cm, draw=black,fill=blue!10,
+      fill opacity = 0.3, text opacity = 1, shape=rectangle, 
+      rounded corners=1.5] at (current page){
+      \begin{minipage}[t][4.4cm][t]{0.19\textwidth}
+       {\textbf{Pre-\texttt{secr}}}
+      \end{minipage}};
+\node[xshift=-1.7cm, yshift=-0.2cm, draw=black,fill=blue!10,
+      fill opacity = 0.3, text opacity = 1, shape=rectangle, 
+      rounded corners=1.5] at (current page){
+      \begin{minipage}[t][4.4cm][t]{0.26\textwidth}
+       {\textbf{\texttt{secr} formatting}}
+      \end{minipage}};
+\node[xshift=1.2cm, yshift=-0.2cm, draw=black,fill=blue!10,
+      fill opacity = 0.3, text opacity = 1, shape=rectangle, 
+      rounded corners=1.5] at (current page){
+      \begin{minipage}[t][4.4cm][t]{0.23\textwidth}
+       {\textbf{Model fitting}}
+      \end{minipage}};      
+\node[xshift=3.67cm, yshift=-0.2cm, draw=black,fill=blue!10,
+      fill opacity = 0.3, text opacity = 1, shape=rectangle, 
+      rounded corners=1.5] at (current page){
+      \begin{minipage}[t][4.4cm][t]{0.18\textwidth}
+       {\textbf{Inference}}
+      \end{minipage}};      
+\end{tikzpicture}
+
+## Demonstrating the `secr` workflow -- Pamir-Alai snow leopards {.t}
+
+\roomyitems
+
+Kyrgyzstan snow leopard example:
+
+- Pamir-Alai mountains, Kyrgyzstan
+- simulated camera-trap data (1 session)
+- 35 detectors deployed (camera traps)
+- one occasion covering the whole survey
+- `r length(unique(preview_captures$id))` individuals detected, with `r nrow(preview_captures)` encounters
+
+\begin{tikzpicture}[remember picture,overlay]
+\node[xshift=3.5cm,yshift=-1.7cm] at (current page)
+{\includegraphics[height=1in]{figures/snowleopards.png}};
+\end{tikzpicture}
+
+## Demonstrating the `secr` workflow -- Pamir-Alai snow leopards
+
+Kyrgyzstan snow leopard example:
+
+- Pamir-Alai mountains, Kyrgyzstan
+- simulated camera-trap data (1 session)
+- 35 detectors deployed (camera traps)
+- one occasion covering the whole survey
+- `r length(unique(preview_captures$id))` individuals detected, with `r nrow(preview_captures)` encounters
+
+Read the two data files:
+
+\vspace{0.2cm}
+
+```{r, size="scriptsize"}
+sl_cap_data <- read.csv("data/practical/snow_leopard_captures.csv")
+sl_trap_data <- read.csv("data/practical/snow_leopard_traps.csv")
+```
+
+```{r, include=FALSE}
+sl_cap_trapid <- sl_cap_data
+sl_cap_xy <- merge(sl_cap_data, sl_trap_data)[, c("session", "id", "occasion", "x", "y")]
+```
+
+## `secr` workflow {.t}
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=-0.5cm, yshift=-0.5cm] at (current page){
+\includegraphics[height=1.6in]{figures/secr}};
+\end{tikzpicture}
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=-4.38cm, yshift=-0.2cm, draw=black,fill=blue!10,
+      fill opacity = 0.3, text opacity = 1, shape=rectangle, 
+      rounded corners=1.5] at (current page){
+      \begin{minipage}[t][4.4cm][t]{0.19\textwidth}
+       {\textbf{Pre-\texttt{secr}}}
+      \end{minipage}};
+\node[xshift=-1.7cm, yshift=-0.2cm, draw=white,fill=white,
+      fill opacity = 1, text opacity = 0, shape=rectangle, 
+      rounded corners=1.5] at (current page){
+      \begin{minipage}[t][4.4cm][t]{0.26\textwidth}
+       {\textbf{\texttt{secr} formatting}}
+      \end{minipage}};
+\node[xshift=1.2cm, yshift=-0.2cm, draw=white,fill=white,
+      fill opacity = 1, text opacity = 0, shape=rectangle, 
+      rounded corners=1.5] at (current page){
+      \begin{minipage}[t][4.4cm][t]{0.4\textwidth}
+       {\textbf{Model fitting}}
+      \end{minipage}};      
+\node[xshift=3.67cm, yshift=-0.2cm, draw=white,fill=white,
+      fill opacity = 1, text opacity = 0, shape=rectangle, 
+      rounded corners=1.5] at (current page){
+      \begin{minipage}[t][4.4cm][t]{0.18\textwidth}
+       {\textbf{Inference}}
+      \end{minipage}};      
+\end{tikzpicture}
+
+## SCR data structures - trap layout file {.t}
+
+\roomyitems
+
+Standard format for \alert{trap layout file} is a dataframe columns for:
+
+- trap coordinates
+    -  column names must be `x` and `y`
+    - `secr` assumes all distances & coordinates are in meters
+- trap identifier
+    - can have any name
+
+\vspace{0.25cm}
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[anchor=south east,xshift=-0.5cm,yshift=0.7cm] at (current page.south east){
+\includegraphics[width=0.46\paperwidth]{figures/secr}};
+\end{tikzpicture}
+
+## SCR data structures - trap layout file
+
+Standard format for \alert{trap layout file} is a dataframe columns for:
+
+- trap coordinates (here `x`,`y`)
+- trap identifier (here `trap`)
+- trap usage (here `effort`)
+- trap covariates (used to model **detectability**)
+
+\vspace{0.25cm}
+
+```{r, size="scriptsize", output.lines = 4}
+sl_trap_data
+```
+
+\vspace{0.15cm}
+
+- column order is important
+- some column names are fixed (must be `x` and `y`), some are specified (`trap`), some are inferred from position (`effort`)
+- `secr` assumes all distances & coordinates are in meters
+ 
+## SCR data structures - convert to `traps` object
+
+Need to convert the trap layout file to a `traps` object
+
+- format the trap data using `?read.traps()`
+    - identify coordinate and ID columns
+    - define the detector type (`"count"` for these camera traps)
+    - creates a `traps` class recognized by other functions (eg, `plot`, `summary`)
+
+\vspace{0.25cm}
+    
+```{r, size="scriptsize"}
+sl_traps <- read.traps(
+  data = sl_trap_data[, c("trap", "x", "y", "effort")],
+  trapID = "trap",
+  detector = "count",
+  binary.usage = FALSE)
+```
+
+```{r, size="scriptsize", output.lines = 3}
+sl_trap_data
+```
+
+## SCR data structures - camera effort
+
+\roomyitems
+
+- `effort` is the number of active camera-days during our single occasion.
+- Most cameras operated for 90 days; six operated for 70--89 days.
+- `binary.usage = FALSE` reads effort as numeric exposure.
+- `secr` scales expected counts by effort: $\lambda_0$ is a rate per camera-day.
+
+Inspect usage for any unusual values:
+
+\vspace{0.2cm}
+
+```{r, size="scriptsize"}
+table(usage(sl_traps))
+```
+
+## SCR data structures - convert to `traps` object
+
+Inspecting the `traps` object *graphically*
+
+\vspace{0.25cm}
+
+```{r, eval=FALSE, size="scriptsize"}
+plot(sl_traps)
+```
+
+```{r, echo=FALSE, size="scriptsize", fig.align='center',fig.width=4,fig.height=3.5, out.width="92%", out.height="2.05in"}
+plot(sl_traps, border = 3000, gridspace = 10000, detpar = list(oma=c(0,0,0,0),mar=c(0,0,0,0)))
+```
+
+## SCR data structures - convert to `traps` object
+
+Inspecting the `traps` object *numerically*
+
+\vspace{0.5cm}
+    
+```{r, size="scriptsize", fig.align='center',fig.width=4,fig.height=4}
+summary(sl_traps)
+```
+
+## SCR data structures - adding covariates to `traps` object
+
+The covariate columns were not passed to `read.traps()`.
+
+```{r size="scriptsize"}
+covariates(sl_traps)
+```
+
+\vspace{0.4cm}
+
+\vspace{0.3cm}
+
+Add camera type (`A`, `B`) and distance to water (`d2water`, kilometres):
+
+```{r, size="scriptsize", output.lines = 3}
+covariates(sl_traps)$camera_type <- factor(sl_trap_data$camera_type)
+covariates(sl_traps)$d2water <- sl_trap_data$d2water / 1000 # m to km
+covariates(sl_traps) # check
+```
+
+## SCR data structures - capture data file {.t}
+
+\roomyitems
+
+The typical \alert{capture data} format is a data frame with columns for:
+
+- a *session* identifier
+    - independent sampling block
+    - eg, year, study area
+- an individual identifier (*who*)
+- capture occasion number (*when*)
+- trap identifier (*where*)
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[anchor=south east,xshift=-0.5cm,yshift=0.7cm] at (current page.south east){
+\includegraphics[width=0.46\paperwidth]{figures/secr}};
+\end{tikzpicture}
+
+
+## SCR data structures - capture data file {.t}
+
+The typical \alert{capture data} format is a data frame with columns for:
+
+:::: {.columns}
+::: {.column width="70%"}
+- a *session* identifier (`session`)
+    - independent sampling block
+- an individual identifier (`id`)
+- capture occasion number (`occasion`)
+- trap identifier (`trap`)
+:::
+::: {.column width="30%"}
+\centering
+\includegraphics[width=\linewidth,height=1in,keepaspectratio]{figures/encdata}
+:::
+::::
+
+Each row is one encounter; repeated animal--camera rows contribute to the count.
+
+\vspace{0.1cm}
+
+```{r, size="scriptsize", output.lines = 5}
+sl_cap_data
+```
+
+
+
+## `secr` workflow {.t}
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=-0.5cm, yshift=-0.5cm] at (current page){
+\includegraphics[height=1.6in]{figures/secr}};
+\end{tikzpicture}
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=-4.38cm, yshift=-0.2cm, draw=black,fill=blue!10,
+      fill opacity = 0.3, text opacity = 1, shape=rectangle, 
+      rounded corners=1.5] at (current page){
+      \begin{minipage}[t][4.4cm][t]{0.19\textwidth}
+       {\textbf{Pre-\texttt{secr}}}
+      \end{minipage}};
+\node[xshift=-1.7cm, yshift=-0.2cm, draw=black,fill=blue!10,
+      fill opacity = 0.3, text opacity = 1, shape=rectangle, 
+      rounded corners=1.5] at (current page){
+      \begin{minipage}[t][4.4cm][t]{0.26\textwidth}
+       {\textbf{\texttt{secr} formatting}}
+      \end{minipage}};
+\node[xshift=1.2cm, yshift=-0.2cm, draw=white,fill=white,
+      fill opacity = 1, text opacity = 0, shape=rectangle, 
+      rounded corners=1.5] at (current page){
+      \begin{minipage}[t][4.4cm][t]{0.23\textwidth}
+       {\textbf{Model fitting}}
+      \end{minipage}};      
+\node[xshift=3.67cm, yshift=-0.2cm, draw=white,fill=white,
+      fill opacity = 1, text opacity = 0, shape=rectangle, 
+      rounded corners=1.5] at (current page){
+      \begin{minipage}[t][4.4cm][t]{0.25\textwidth}
+       {\textbf{Inference}}
+      \end{minipage}};      
+\end{tikzpicture}
+
+
+## Associating captures and traps -- `make.capthist()`
+
+\roomyitems
+
+Create a `capthist` data object using `?make.capthist()`
+
+- links sampling effort data and capture data 
+- conducts a series of checks
+- returns an analysis-ready data objects - `capthist`
+- `make.capthist` requires the following:
+    - the capture data
+    - a `traps` object
+    - the format of the capture data (we will use `"trapID"` exclusively)
+    - the number of occasions
+
+## Associating captures and traps -- `make.capthist()`
+
+\roomyitems
+
+Create a `capthist` data object using `?make.capthist()`
+
+- links sampling effort data and capture data 
+- conducts a series of checks
+- returns an analysis-ready data objects - `capthist`
+- `make.capthist` requires the following:
+
+\vspace{0.25cm}
+    
+```{r, size="scriptsize", output.lines = 5}
+sl_ch <- make.capthist(captures = sl_cap_data, # capture file
+                         traps = sl_traps,       # a traps object
+                         fmt = "trapID",           # format of caps
+                         noccasions = 1)           # number of occasions
+```
+
+## Two format options for capture data
+
+Captures can be formatted using \alert{trap IDs} (`fmt = "trapID"`)
+
+\vspace{0.1cm}
+    
+```{r, size="scriptsize", output.lines = 4}
+sl_cap_trapid
+```
+
+\vspace{0.5cm}
+
+Captures can be formatted using \alert{coordinates directly} (`fmt = "XY"`)
+
+\vspace{0.1cm}
+    
+```{r, size="scriptsize", output.lines = 4}
+sl_cap_xy
+```
+
+## Summarising the `capthist`
+
+Extensive numerical summary of the SCR data:
+
+```{r, size="compactcode"}
+summary(sl_ch)
+```
+
+## Summarising the `capthist`
+
+\roomyitems
+
+Extensive numerical summary of the SCR data:
+
+- `n`	inds detected on each occasion
+- `u`	inds detected for the first time on each occasion
+- `f`	number of inds detected on exactly `f` occasions
+- `M(t+1)`	cumulative number of inds detected
+- `losses`	inds not released on each occasion (mortality)
+- `detections`	detections, including within-occasion `recaptures'
+- `traps visited`	detectors with at least one detection
+- `traps set`	number of detectors
+
+
+## Summarising the `capthist`
+
+Visualisation of the SCR data:
+
+```{r, eval=FALSE, size="scriptsize", fig.align='center',fig.width=4,fig.height=3.5, out.width="92%", out.height="2.05in"}
+plot(sl_ch)
+```
+
+```{r, echo=FALSE, size="scriptsize", fig.align='center',fig.width=4,fig.height=3.5, warning=FALSE, out.width="92%", out.height="2.05in"}
+clr <- hcl.colors(nrow(sl_ch), "Dark 3")
+plot(sl_ch, border = 3000, gridspace = 10000, title = FALSE, subtitle = FALSE, icolours = clr, rad = 600, cappar = list(oma=c(0,0,0,0),mar=c(0,0,0,0)))
+```
+
+## Summarising the `capthist`
+
+Visualisation of the SCR data:
+
+```{r, eval=FALSE, size="scriptsize", fig.align='center',fig.width=4,fig.height=3.5, out.width="92%", out.height="2.05in"}
+plot(sl_ch, tracks = TRUE)
+```
+
+```{r, echo=FALSE, size="scriptsize", fig.align='center',fig.width=4,fig.height=3.5, warning=FALSE, out.width="92%", out.height="2.05in"}
+plot(sl_ch, tracks=TRUE, border = 3000, gridspace = 10000, title = FALSE, subtitle = FALSE, icolours = clr, rad = 600, cappar = list(oma=c(0,0,0,0),mar=c(0,0,0,0)))
+```
+
+
+## Defining the state-space {.t}
+
+\roomyitems
+
+Area sampled extends beyond detector array -- this area is part of the SCR model!
+
+- called a *mask* or *state-space*
+    - defines where individuals can live
+    - defines the population of interest
+    - includes apparently un-sampled parts of the landscape
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[anchor=south east,xshift=-0.5cm,yshift=0.7cm] at (current page.south east){
+\includegraphics[width=0.46\paperwidth]{figures/secr}};
+\end{tikzpicture}
+
+
+
+## Defining the state-space
+
+\roomyitems
+
+Area sampled extends beyond detector array -- this area is part of the SCR model!
+
+- called a *mask* or *state-space*
+    - defines where individuals can live
+    - defines the population of interest
+    - includes apparently un-sampled parts of the landscape
+- should include activity centres of all detectable individuals
+    - use a buffer around traps
+    - pr(detection) for individual with an AC outside area = 0
+- for likelihood analysis, space is discrete
+    - the mask is a fine mesh of points
+    - integrate (*sum over*) the points
+
+## Defining the state-space -- `make.mask()`
+
+Area sampled extends beyond detector array -- this area is part of the SCR model!
+
+- the *mask* or *state-space* is a fine mesh of points defined by:
+   - a buffer around traps
+   - the spacing of the regular points
+   - create using `?make.mask()`
+
+\vspace{0.5cm}
+
+## Defining the state-space -- `make.mask()`
+
+Area sampled extends beyond detector array -- this area is part of the SCR model!
+
+- the *mask* or *state-space* is a fine mesh of points defined by:
+   - a buffer around traps (conservatively `buffer = 30000`)
+   - \textcolor{gray}{the spacing of the regular points}
+   - \textcolor{gray}{create using \texttt{?make.mask()}}
+
+```{r, size="scriptsize", warning=FALSE}
+suggest.buffer(object = sl_ch, # a capthist object
+               detectfn = "HHN")  # the detection function to be used
+```
+
+## Defining the state-space -- `make.mask()`
+
+Area sampled extends beyond detector array -- this area is part of the SCR model!
+
+- the *mask* or *state-space* is a fine mesh of points defined by:
+   - a buffer around traps (conservatively `buffer = 30000`)
+   - the spacing of the regular points (conservatively `spacing = 1500`)
+   - \textcolor{gray}{create using \texttt{?make.mask()}}
+
+```{r, size="scriptsize"}
+sl_mask <- make.mask(traps = sl_traps, # a traps object
+                       buffer = 30000,      # the buffer
+                       spacing = 1500)     # mask spacing
+```
+
+ 
+
+
+## Defining the state-space -- `make.mask()`
+
+Area sampled extends beyond detector array -- this area is part of the SCR model!
+
+\vspace{0.15cm}
+
+```{r, eval=FALSE, size="scriptsize"}
+sl_mask <- make.mask(traps = sl_traps, buffer = 30000, spacing = 1500)
+plot(sl_mask)                      # plot the mask
+plot(sl_traps, add = TRUE)
+plot(sl_ch, tracks=TRUE, add=TRUE) # add the captures
+```
+
+\vspace{0.1cm}
+
+```{r, echo=FALSE, size="scriptsize", fig.align='center',fig.width=6,fig.height=5, warning=FALSE, message = FALSE, out.width="92%", out.height="1.6in"}
+sl_mask <- make.mask(traps = sl_traps, buffer = 30000, spacing = 1500)
+plot(sl_mask, cex = 0.5)                      # plot the mask
+plot(sl_traps, add = TRUE)
+plot(sl_ch, tracks=TRUE, rad = 600, add=TRUE, cappar = list(oma=c(0,0,0,0),mar=c(0,0,0,0)))
+```
+
+## Defining the state-space -- `make.mask()`
+
+A more efficient mask only keeps points within distance `buffer` (in m) of any trap.
+
+\vspace{0.15cm}
+
+```{r, eval=FALSE, size="scriptsize"}
+sl_mask <- make.mask(traps = sl_traps, buffer = 30000,
+                     spacing = 1500, type = "trapbuffer")
+plot(sl_mask)                      # plot the mask
+plot(sl_traps, add = TRUE)
+plot(sl_ch, tracks=TRUE, add=TRUE) # add the captures
+```
+
+\vspace{0.1cm}
+
+```{r, echo=FALSE, size="scriptsize", fig.align='center',fig.width=6,fig.height=5, warning=FALSE, message = FALSE, out.width="92%", out.height="1.6in"}
+sl_mask <- make.mask(traps = sl_traps, buffer = 30000,
+                     spacing = 1500, type = "trapbuffer")
+plot(sl_mask, cex = 0.5)                      # plot the mask
+plot(sl_traps, add = TRUE)
+plot(sl_ch, tracks=TRUE, rad = 600, add=TRUE, cappar = list(oma=c(0,0,0,0),mar=c(0,0,0,0)))
+```
+
+## Defining the state-space -- two masks
+
+- **Model fitting mask** (`sl_mask`): the area integrated over when fitting
+  the model with `secr.fit()`.
+- **Prediction mask** (`pamir_alai_region`): the area over which we predict
+  density or calculate abundance with `region.N()`.
+
+Create a prediction mask for the full Pamir-Alai survey region:
+
+```{r, size="scriptsize"}
+survey_area <- sf::st_read(
+  "data/survey_area/pamir_alai_kyrgyzstan_utm43.gpkg",
+  quiet = TRUE)
+pamir_alai_region <- make.mask(traps = sl_traps,
+                               type = "polygon",
+                               poly = survey_area,
+                               spacing = 1500)
+```
+
+Need to add any spatial covariates you want to predict with
+
+```{r, size="scriptsize"}
+# read in e.g. ruggedness raster
+tri_raster <- terra::rast("data/spatial_covs/tri_KYRG.tif")
+# add to mask
+pamir_alai_region <- addCovariates(pamir_alai_region, tri_raster)
+```
+
+## Defining the state-space -- two masks
+
+Plotting the prediction and model-fitting masks, with trap locations. 
+
+```{r, echo=FALSE, fig.align="center", fig.width=9, fig.height=4.5, out.width="92%", out.height="2.65in"}
+plot(pamir_alai_region, dots = FALSE, col = "grey85", polycol = "grey40")
+plot(sl_mask, dots = FALSE, col = "lightsteelblue", add = TRUE)
+plot(sl_traps, add = TRUE)
+legend("bottom", legend = c("Prediction mask", "Model fitting mask", "Camera traps"),
+       pch = c(15, 15, 3), col = c("grey85", "lightsteelblue", "red"),
+       horiz = TRUE, bty = "n", cex = 0.9)
+```
+
+## `secr` workflow {.t}
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=-0.5cm, yshift=-0.5cm] at (current page){
+\includegraphics[height=1.6in]{figures/secr}};
+\end{tikzpicture}
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=-4.38cm, yshift=-0.2cm, draw=black,fill=blue!10,
+      fill opacity = 0.3, text opacity = 1, shape=rectangle, 
+      rounded corners=1.5] at (current page){
+      \begin{minipage}[t][4.4cm][t]{0.19\textwidth}
+       {\textbf{Pre-\texttt{secr}}}
+      \end{minipage}};
+\node[xshift=-1.7cm, yshift=-0.2cm, draw=black,fill=blue!10,
+      fill opacity = 0.3, text opacity = 1, shape=rectangle, 
+      rounded corners=1.5] at (current page){
+      \begin{minipage}[t][4.4cm][t]{0.26\textwidth}
+       {\textbf{\texttt{secr} formatting}}
+      \end{minipage}};
+\node[xshift=1.2cm, yshift=-0.2cm, draw=black,fill=blue!10,
+      fill opacity = 0.3, text opacity = 1, shape=rectangle, 
+      rounded corners=1.5] at (current page){
+      \begin{minipage}[t][4.4cm][t]{0.23\textwidth}
+       {\textbf{Model fitting}}
+      \end{minipage}};      
+\node[xshift=3.67cm, yshift=-0.2cm, draw=white,fill=white,
+      fill opacity = 1, text opacity = 0, shape=rectangle, 
+      rounded corners=1.5] at (current page){
+      \begin{minipage}[t][4.4cm][t]{0.18\textwidth}
+       {\textbf{Inference}}
+      \end{minipage}};      
+\end{tikzpicture}
+
+
+## Model fitting using `secr.fit`
+
+To fit models in `secr`:
+
+- use the fitting function `secr.fit()`
+- provide the following three objects required to fit a model: 
+    - the `capthist` object (`capthist=`)
+    - a list specifying the model (`model =`)
+    - the `mask` object (`mask=`)
+
+\vspace{0.25cm}
+
+```{r, size="scriptsize", eval=FALSE}
+mod <- secr.fit(capthist=, # capthist object
+                model=,    # model specification
+                mask=)     # the mask
+```
+
+## Specifying the SCR model in `secr.fit`
+
+The `model` components define linear predictor for each model component
+
+- a list with 3 formulae: `list(D~, lambda0~, sigma~)`
+    - `D~`: model describing variation in density
+    - `lambda0~`: model describing variation in baseline encounter rate
+    - `sigma~`: model describing variation in sigma
+
+- baseline density, baseline detection model given by `model = list(D~1, lambda0~1, sigma~1)`. This sets
+$$\text{log}(D(s_i)) = \beta_0 \quad
+\text{log}(\lambda_0) = \alpha_0 \quad
+\text{log}(\sigma) = \gamma_0$$
+
+- logs are there to make sure density and detection rates are positive.
+
+## Fitting the null model -- SCR~0~
+
+Let's fit the null SCR model to the Pamir-Alai data
+
+\vspace{0.25cm}
+
+```{r, size = "scriptsize", output.lines=14, warning=FALSE, message = FALSE}
+sl_mod <- secr.fit(capthist = sl_ch,
+                     model = list(D~1, lambda0~1, sigma~1), 
+                     mask = sl_mask,
+                     detectfn = "HHN",
+                     trace = FALSE)
+```
+
+## Fitting the null model -- SCR~0~
+
+Type the name of the model for a model summary:
+
+\vspace{0.25cm}
+
+```{r,eval=TRUE, size="scriptsize", output.lines=15}
+sl_mod # 1 of 3
+```
+
+## Fitting the null model -- SCR~0~
+
+Type the name of the model for a model summary:
+
+\vspace{0.05cm}
+
+```{r,eval=TRUE, size="scriptsize", output.lines=16:31}
+sl_mod # 2 of 3
+```
+
+## Fitting the null model -- SCR~0~
+
+Type the name of the model for a model summary:
+
+\vspace{0.05cm}
+
+```{r,eval=TRUE, size="scriptsize", output.lines=32:48}
+sl_mod # 3 of 3
+```
+
+
+## `secr` workflow {.t}
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=-0.5cm, yshift=-0.5cm] at (current page){
+\includegraphics[height=1.6in]{figures/secr}};
+\end{tikzpicture}
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=-4.38cm, yshift=-0.2cm, draw=black,fill=blue!10,
+      fill opacity = 0.3, text opacity = 1, shape=rectangle, 
+      rounded corners=1.5] at (current page){
+      \begin{minipage}[t][4.4cm][t]{0.19\textwidth}
+       {\textbf{Pre-\texttt{secr}}}
+      \end{minipage}};
+\node[xshift=-1.7cm, yshift=-0.2cm, draw=black,fill=blue!10,
+      fill opacity = 0.3, text opacity = 1, shape=rectangle, 
+      rounded corners=1.5] at (current page){
+      \begin{minipage}[t][4.4cm][t]{0.26\textwidth}
+       {\textbf{\texttt{secr} formatting}}
+      \end{minipage}};
+\node[xshift=1.2cm, yshift=-0.2cm, draw=black,fill=blue!10,
+      fill opacity = 0.3, text opacity = 1, shape=rectangle, 
+      rounded corners=1.5] at (current page){
+      \begin{minipage}[t][4.4cm][t]{0.23\textwidth}
+       {\textbf{Model fitting}}
+      \end{minipage}};      
+\node[xshift=3.67cm, yshift=-0.2cm, draw=black,fill=blue!10,
+      fill opacity = 0.3, text opacity = 1, shape=rectangle, 
+      rounded corners=1.5] at (current page){
+      \begin{minipage}[t][4.4cm][t]{0.18\textwidth}
+       {\textbf{Inference}}
+      \end{minipage}};      
+\end{tikzpicture}
+
+## Modelling density -- terrain ruggedness
+
+Define the model for \alert{density}
+
+$$\text{log}(D(s_i)) = \beta_0 + \beta_1\,\text{tri}(s_i)$$
+
+- density varies with terrain ruggedness (TRI)
+- TRI is supplied for each mask point from the local terrain raster
+- formula syntax: `D~tri`
+
+```{r, size="scriptsize"}
+sl_mask <- addCovariates(sl_mask, tri_raster, columns = "tri")
+mask_data <- covariates(sl_mask)
+```
+
+## Terrain ruggedness across the mask
+
+TRI at each mask point, with camera locations overlaid:
+
+```{r, size="scriptsize", fig.align="center", fig.width=7, fig.height=4.5, out.width="92%", out.height="2.05in"}
+covariates(sl_mask)$TRI <- covariates(sl_mask)$tri
+plot(sl_mask, covariate = "TRI", dots = FALSE, breaks = 6)
+plot(sl_traps, add = TRUE)
+```
+
+## Fitting a density covariate -- SCR~tri~
+
+Let's fit a model with density varying with terrain ruggedness
+
+\vspace{0.25cm}
+
+```{r, size="scriptsize", output.lines=14}
+sl_mod_tri <- secr.fit(capthist = sl_ch,
+                      model = list(D~tri, lambda0~1, sigma~1),
+                      mask = sl_mask,
+                      detectfn = "HHN",
+                      start = sl_mod,
+                      method = "Nelder-Mead",
+                      trace = FALSE)
+```
+
+## Comparing models -- `AIC()`
+
+Compare constant density with density varying with terrain ruggedness
+
+\vspace{0.25cm}
+
+```{r, size="scriptsize"}
+AIC(sl_mod, sl_mod_tri)
+```
+
+- smaller AIC indicates the better-supported model
+- the terrain model estimates one extra parameter
+
+## Modelling detection -- camera type
+
+Define the model for \alert{baseline encounter rate}
+
+$$\text{log}(\lambda_0) = \alpha_0 + \alpha_B\,\text{camera type}$$
+
+- compare camera types `A` and `B` (`A` is the reference)
+- keep `D~tri` and `sigma~1`
+
+```{r, size="scriptsize"}
+sl_mod_camera <- secr.fit(capthist = sl_ch,
+                         model = list(D~tri, lambda0~camera_type, sigma~1),
+                         mask = sl_mask,
+                         detectfn = "HHN",
+                         start = sl_mod_tri,
+                         method = "Nelder-Mead",
+                         trace = FALSE)
+```
+
+## Modelling detection -- distance to water
+
+$$\text{log}(\lambda_0) = \alpha_0 + \alpha_1\,\text{d2water}$$
+
+Distance to water is expressed in kilometres:
+
+```{r, size="scriptsize"}
+sl_mod_water <- secr.fit(capthist = sl_ch,
+                        model = list(D~tri, lambda0~d2water, sigma~1),
+                        mask = sl_mask,
+                        detectfn = "HHN",
+                        start = sl_mod_tri,
+                        method = "Nelder-Mead",
+                        trace = FALSE)
+```
+
+## Comparing detection models -- `AIC()`
+
+Compare the density and detection models:
+
+```{r, size="scriptsize"}
+AIC(sl_mod, sl_mod_tri, sl_mod_camera, sl_mod_water)
+```
+
+- the detection models keep `D~tri` and `sigma~1`
+- does adding camera type or distance to water improve support?
+
+## Post processing functions in `secr`
+
+\roomyitems
+
+A bunch of helper functions for working with model output:
+
+- extract link-scale estimates & associated uncertainty: `?coef()`
+- extract real-scale estimates & associated uncertainty: `?predict()`
+- compute the population size for the area: `region.N()`
+- plot detection function based on estimates: `plot()`
+- plot probability contours for estimated $\mathbf{s}_i$: `fxi.contour()`
+- $\ldots$ more post-processing functions (`?secr`)
+
+## Extract parameter estimates -- \newline `coef()`, `predict()` & `region.N()`
+
+Link-scale estimates & uncertainty: `coef()`
+
+```{r, size="scriptsize"}
+coef(sl_mod)
+```
+
+\vspace{0.4cm}
+
+Response-scale estimates & uncertainty: `predict()`
+
+```{r, size="scriptsize"}
+predict(sl_mod)
+```
+
+
+## Best model -- `coef()`
+
+Link-scale estimates for `D~tri`, `lambda0~camera_type`, `sigma~1`:
+
+```{r, size="scriptsize"}
+coef(sl_mod_camera)
+```
+
+- `D.tri`: change in log-density per unit of terrain ruggedness
+- `lambda0.camera_typeB`: change in log-encounter rate for B relative to A
+
+Camera B's baseline encounter rate is `r round(exp(coef(sl_mod_camera)["lambda0.camera_typeB", "beta"]), 1)` times that of camera A.
+
+## Best model -- `predict()`
+
+Response-scale estimates across terrain ruggedness and camera types:
+
+\vspace{0.2cm}
+
+```{r, size="scriptsize"}
+prediction_data <- expand.grid(tri = c(15, 35, 55),
+                               camera_type = c("A", "B"))
+predict(sl_mod_camera, newdata = prediction_data, se.fit = FALSE)
+```
+
+- density changes with terrain ruggedness
+- camera type changes the baseline encounter rate (per camera-day)
+- the spatial scale $\sigma$ is shared by both camera types
+
+## Extract abundance estimates -- `region.N()`
+
+\small
+\setbeamerfont{itemize/enumerate body}{size=\small}
+
+Abundance within the fitting mask:
+
+```{r, size="scriptsize"}
+region.N(sl_mod_tri)
+```
+
+Extrapolate to the full Pamir-Alai survey region:
+
+```{r, size="scriptsize"}
+pamir_alai_region <- readRDS("data/practical/pamir_alai_region.rds")
+region.N(sl_mod_tri, region = pamir_alai_region)
+```
+
+- `E.N` is **expected abundance**: the expected number of animals under the fitted density model.
+- `R.N` is **realised abundance**: the estimated number actually present during this survey.
+- `E.N` uses the expected number of *detected* animals, `R.N` uses the actual number detected.
+
+## Density and terrain ruggedness -- `predict()`
+
+Response-scale density estimates at different terrain ruggedness values:
+
+```{r, size="scriptsize"}
+predict(sl_mod_tri, newdata = data.frame(tri = c(15, 35, 55)))
+```
+
+## Density and terrain ruggedness
+
+How does estimated density change with terrain ruggedness?
+
+```{r, echo=FALSE, fig.width=6, fig.height=4, out.width="92%", out.height="2.05in"}
+tri_values <- seq(quantile(mask_data$tri, 0.05),
+                  quantile(mask_data$tri, 0.95), length.out = 100)
+tri_predictions <- predict(sl_mod_tri, newdata = data.frame(tri = tri_values))
+density_est <- do.call(rbind, lapply(tri_predictions, function(x) x["D", ]))
+plot(tri_values, density_est$estimate * 10000, type = "l", lwd = 2,
+     xlab = "Terrain ruggedness (TRI)",
+     ylab = expression("Snow leopards per 100 " * km^2),
+     ylim = c(0, max(density_est$ucl * 10000)))
+polygon(c(tri_values, rev(tri_values)),
+        c(density_est$lcl, rev(density_est$ucl)) * 10000,
+        col = adjustcolor("steelblue", alpha.f = 0.2), border = NA)
+lines(tri_values, density_est$estimate * 10000, lwd = 2, col = "steelblue4")
+```
+
+## Plot detection function -- `plot()`
+
+The fitted hazard half-normal detection function:
+
+```{r, size="scriptsize", fig.align='center',fig.width=6,fig.height=5, warning=FALSE, out.width="92%", out.height="1.85in"}
+plot(x = sl_mod,                 # the fitted model
+     limits = TRUE,                # plot CIs
+     xval = seq(0,30000,length=60)) # limits of the x (distance) axis 
+```
+
+
+## Detection functions -- camera types A and B
+
+Compare the two camera types using the best model:
+
+```{r, echo=FALSE}
+par(mar = c(4, 4, 1, 1))
+```
+
+```{r, size="scriptsize", fig.align="center", fig.width=6, fig.height=4, out.width="92%", out.height="1.5in"}
+camera_types <- data.frame(tri = 35,
+                           camera_type = factor(c("A", "B")))
+distances <- seq(0, 30000, by = 500)
+plot(sl_mod_camera, newdata = camera_types[2, ], col = "red", xval = distances)
+plot(sl_mod_camera, newdata = camera_types[1, ], col = "blue",
+     xval = distances, add = TRUE)
+legend("topright", c("Camera A", "Camera B"),
+       col = c("blue", "red"), lty = 1, bty = "n")
+```
+
+## What to report
+
+A useful report states:
+
+- Species, eligible animals, survey region and dates.
+
+- Detector layout, actual effort, identification method, number of
+  individuals detected and spatial recaptures.
+
+- Detector type, detection function and models for density and detection;
+  model comparisons and checks of convergence and mask/buffer sensitivity.
+
+- Density with units, abundance for a clearly mapped region, and
+  confidence intervals. State whether abundance is expected or realised.
+
+- Assumptions, identification uncertainty and limits to extrapolation.
+
+<!-- Adapted to SCR from the closing reporting slide in
+../05_distance_sampling/02_distance_sampling_practical.qmd.
+Method reference: Efford, secr overview and associated vignettes:
+https://cran.r-project.org/web/packages/secr/vignettes/secr-overview.pdf
+Keep reporting region distinct from the fitting mask; density units must be
+explicit, especially when converting secr's default per-hectare output.
+Report checks actually performed and unresolved limitations. The classroom
+dataset is simulated: its estimates are not population estimates for Kyrgyzstan. -->
+
+## Further resources
+
+\footnotesize
+\roomyitems[0.65em] 
+
+- **Getting started:**
+  \url{https://cran.r-project.org/web/packages/secr/vignettes/secr-overview.pdf}.
+
+- **Free online book**: \url{https://murrayefford.github.io/SECRbook/}
+
+- **Camera trap SCR workflow**: https://github.com/iandurbach/scr-workflow
+
+- **Documentation and worked examples:** \url{https://www.otago.ac.nz/density/}
+
+- **Planning a survey:** \url{https://www.stats.otago.ac.nz/secrdesignapp/}
+
+- **PAWS guidelines and resources**: \url{https://globalsnowleopard.org/gslep-projects/paws/paws-resources/}
+
+<!-- Official resources maintained by Murray Efford and collaborators.
+The Otago site links to package documentation, tutorials, example data,
+the SECR book and survey-design tools. Field-method reading, including PAWS,
+is listed at the end of the field-guidance section earlier in this practical. -->

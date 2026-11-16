@@ -1,0 +1,947 @@
+---
+title: Distance Sampling
+subtitle: Biodiversity Monitoring Course, Module 5
+fontsize: 10pt
+format:
+  beamer:
+    theme: metropolis
+    incremental: false
+    slide-level: 2
+    pdf-engine: xelatex
+    syntax-highlighting: tango
+    include-in-header:
+      text: |
+        \usepackage{tikz}
+        \definecolor{bl}{rgb}{0.16,0.32,0.75}
+        \definecolor{rd}{rgb}{0.82,0.1,0.26}
+        \definecolor{grn}{rgb}{0.55,0.71,0.0}
+        \providecommand{\hib}[1]{\textcolor{bl}{#1}}
+        \providecommand{\hir}[1]{\textcolor{rd}{#1}}
+        \providecommand{\hig}[1]{\textcolor{grn}{#1}}
+        \setbeamertemplate{title page}{%
+          \centering
+          \includegraphics[width=0.27\textwidth,height=1.1cm,keepaspectratio]{../logos/01-standard-black-text.png}\hfill
+          \includegraphics[width=0.40\textwidth,height=1.1cm,keepaspectratio]{../logos/creem-long.png}\hfill
+          \includegraphics[width=0.19\textwidth,height=1.1cm,keepaspectratio]{../logos/SLT-Logo-2016-300dpi-Regular.jpg}\par
+          \vspace{0.35cm}
+          {\LARGE\inserttitle\par}
+          \vspace{0.35cm}
+          {\normalsize\insertsubtitle\par}
+          \vspace{0.25cm}
+          {\small UNDP-GEF Project\par}
+          \vspace{0.15cm}
+          {\small ``Integrated Community-based Management of High Value Mountain Ecosystems in Southern Kyrgyzstan for Multiple Benefits''\par}
+          \vfill
+          {\fontsize{6}{7}\selectfont
+          \textcopyright{} 2026 University of St Andrews (Centre for Research into Ecological and Environmental Modelling, CREEM), Snow Leopard Trust, developed within the framework of the UNDP-GEF Pamir-Alai project. Licensed under CC BY 4.0. You may share and adapt these materials if you keep this credit and indicate any changes.\par}
+        }
+classoption: c
+urlcolor: teal
+---
+
+
+
+```{r setup, include=FALSE}
+# Teaching adaptation of the original L04--L08 source lectures. L04 supplies the conceptual
+# spine; L05 supplies assumptions and detection functions; L06 supplies model
+# selection, goodness of fit and uncertainty; L07 supplies point transects and
+# the Montrave comparison; L08 supplies detection covariates and seabird context.
+# The practical workflow and model-fitting R code belong in a separate deck.
+# All new plots below are teaching illustrations, not fitted study results.
+# Original study contexts and species have been retained.
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
+                      fig.align = "center", dev = "pdf",
+                      fig.width = 7, fig.height = 3.1,
+                      out.width = "92%", fig.path = "figures/01-distance-")
+bl <- rgb(0.16, 0.32, 0.75)
+rd <- rgb(0.82, 0.1, 0.26)
+grn <- rgb(0.55, 0.71, 0.0)
+g <- function(x, scale = 1) exp(-x^2 / (2 * scale^2))
+plot_style <- function(mfrow = c(1, 1)) {
+  par(mfrow = mfrow, mar = c(3.5, 3.8, 2.1, 0.7),
+      mgp = c(2.2, 0.65, 0), las = 1, bty = "l", cex = 0.9)
+}
+# Binned teaching counts adapted from L04; these are not monitor survey records.
+monitor_counts <- c(11, 10, 12, 9, 9, 2, 1, 1)
+monitor_breaks <- seq(0, 2.5, length.out = 9)
+monitor_mids <- head(monitor_breaks, -1) + diff(monitor_breaks) / 2
+```
+
+## Learning outcomes
+
+By the end of this lecture and practical, you should be able to:
+
+- Explain how distances help estimate animals missed during a survey.
+- Explain model assumptions and their consequences for fieldwork.
+- Recognise common detection functions and assess their fit visually.
+- Describe how detection covariates can improve an analysis.
+- Fit and check a simple detection model in R using `Distance`.
+- Interpret abundance estimates together with their uncertainty.
+- Change the analysis from line transects to point transects.
+
+# From plot sampling to distance sampling
+
+## Beyond plot sampling
+
+Recall the two steps in plot sampling:
+
+1. Count individuals in a sample of the region.
+2. Scale up to estimate abundance across the region.
+
+We assumed **every individual inside the sampled area was counted**.
+
+For animals that are hidden, quiet or far away, this is often unrealistic.
+
+\vspace{0.3cm}
+\alert{Distance sampling adds a correction for individuals we miss.}
+
+## The basic idea
+
+- Survey along lines or from points distributed across the region.
+- Record each detection **and its distance**.
+- Nearby animals are usually easier to detect than distant animals.
+- Use the distance pattern to estimate detection probability.
+- Correct the count, then scale up to the region.
+
+We can estimate **density** (individuals per unit area) and **abundance**
+(total individuals in a defined region).
+
+## Putting the distance in distance sampling
+
+For a **line transect**, record the **perpendicular distance** from the
+line to the animal's initial position.
+
+\begin{center}
+\includegraphics[width=0.5\textwidth]{figures/perp.png}
+\end{center}
+
+An animal ahead of you has a sighting distance that differs from its
+perpendicular distance. Distance and bearing can be used to calculate it.
+
+## Example: desert monitor
+
+Line transects provide the survey effort and locations of sightings.
+
+\begin{center}
+\begin{minipage}[c]{0.43\textwidth}
+\centering
+\includegraphics[width=\textwidth,height=0.43\textheight,keepaspectratio]{figures/desert-monitor-davletbakov.jpg}
+
+\scriptsize Photo: A. Davletbakov
+\end{minipage}\hfill
+\begin{minipage}[c]{0.53\textwidth}
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[x=1cm,y=1cm,font=\scriptsize]
+\draw[gray!50] (-0.2,-0.4) rectangle (5.65,4.1);
+\node at (2.7,4.4) {Hypothetical line transects};
+\foreach \x/\id in {0.7/L1,2.5/L2,4.3/L3} {
+  \draw[very thick,bl] (\x,0) -- (\x,3.7);
+  \node[below,text=bl] at (\x,0) {\id};
+}
+\foreach \lx/\ax/\y/\d in {0.7/0.2/0.9/50,0.7/1.5/2.7/80,2.5/2.1/1.7/40,2.5/3.45/3.3/95,4.3/3.9/0.7/40,4.3/5.25/2.3/95} {
+  \draw[dashed,rd] (\lx,\y) -- (\ax,\y)
+    node[midway,above=2pt,text=rd] {\d\,m};
+  \begin{scope}[shift={(\ax,\y)}]
+    \fill[black] (0,0) ellipse (0.06 and 0.11);
+    \draw[thick] (0,-0.1) .. controls (-0.03,-0.2) and (0.12,-0.24) .. (0.1,-0.32);
+    \draw (0,0.04) -- (-0.12,0.1) (0,0.04) -- (0.12,0.1)
+      (0,-0.04) -- (-0.12,-0.1) (0,-0.04) -- (0.12,-0.1);
+    \fill (0,0.13) circle (0.04);
+  \end{scope}
+}
+\node[below] at (2.7,-0.55) {Dashed lines: perpendicular distances};
+\end{tikzpicture}%
+}
+\end{minipage}
+\end{center}
+
+Distance sampling uses distances as well as these counts and locations.
+
+## Putting the distance in distance sampling
+
+For a **point transect**, record the **radial distance** from the
+point to the animal's initial position.
+
+\begin{center}
+\resizebox{0.5\textwidth}{!}{%
+\begin{tikzpicture}[x=1cm,y=1cm,font=\small]
+\path[use as bounding box] (-2.2,-2.2) rectangle (3.5,2.2);
+\draw[thick,gray] (0,0) circle (2);
+\draw[->,very thick,red!80!black] (0.06,0.08) -- (1.14,1.52)
+  node[midway,above,sloped,text=orange!90!black] {Radial distance $r$};
+\draw[thick,fill=white] (0,0) circle (0.09)
+  node[below=5pt,text=gray] {Observer at survey point};
+\draw[thick,fill=white] (1.2,1.6) circle (0.09)
+  node[right=5pt,text=gray] {Animal};
+\end{tikzpicture}%
+}
+\end{center}
+
+We first cover line transect distance sampling, then point transects.
+
+## Example: golden eagle
+
+Point transects provide the survey effort and locations of sightings.
+
+\begin{center}
+\begin{minipage}[c]{0.43\textwidth}
+\centering
+\includegraphics[width=\textwidth,height=0.43\textheight,keepaspectratio]{figures/golden-eagle-davletbakov.jpg}
+
+\scriptsize Photo: A. Davletbakov
+\end{minipage}\hfill
+\begin{minipage}[c]{0.53\textwidth}
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[x=1cm,y=1cm,font=\scriptsize]
+\draw[gray!50] (-0.2,-0.4) rectangle (5.65,4.1);
+\node at (2.7,4.4) {Hypothetical point transects};
+\foreach \x/\y/\id in {1/1/P1,4.3/1/P2,2.6/3.5/P3} {
+  \fill[bl] (\x,\y) circle (0.07);
+  \node[below=3pt,text=bl] at (\x,\y) {\id};
+}
+\foreach \px/\py/\ax/\ay/\d in {1/1/1.6/1.8/100,1/1/0.2/2.5/170,4.3/1/5.1/1.6/100,4.3/1/3.1/0.5/130,2.6/3.5/1.9/3.6/70,2.6/3.5/4/3/150} {
+  \draw[dashed,rd] (\px,\py) -- (\ax,\ay)
+    node[midway,above=2pt,sloped,text=rd] {\d\,m};
+  \begin{scope}[shift={(\ax,\ay)}]
+    \draw[thick] (-0.18,0.08) -- (-0.08,0.03) -- (0,0.06)
+      -- (0.08,0.03) -- (0.18,0.08);
+    \fill (0,0.06) circle (0.035);
+    \fill (0,0.03) -- (-0.045,-0.1) -- (0.045,-0.1) -- cycle;
+  \end{scope}
+}
+\node[below] at (2.7,-0.55) {Dashed lines: radial distances};
+\end{tikzpicture}%
+}
+\end{minipage}
+\end{center}
+
+Distance sampling uses distances as well as these counts and locations.
+
+## What do the distances tell us?
+
+Combine sightings from both sides of the line into distance bands.
+
+```{r monitor-distances, fig.height=2.8}
+plot_style()
+plot(monitor_mids, monitor_counts, type = "n", ylim = c(0, 14),
+     xlim = c(0, 2.5), xlab = "Perpendicular distance (km)",
+     ylab = "Number detected", main = "Desert monitor teaching example")
+rect(head(monitor_breaks, -1), 0, tail(monitor_breaks, -1),
+     monitor_counts, col = adjustcolor(bl, 0.35), border = "white")
+```
+
+Why are there fewer detections far from the line?
+
+\vspace{-0.5em}
+\scriptsize $\quad\quad\quad\quad\quad$ *Nearby animals are usually easier to detect*.
+
+\normalsize
+
+\alert{The data tells us something about how many animals we missed.}
+
+## A toy example: what if we knew the truth?
+
+Imagine **12 animals in every distance band**. We detect only some of them.
+
+```{r known-truth, fig.height=2.8}
+plot_style()
+par(mar = c(3.5, 3.8, 3.1, 0.7))
+plot(monitor_mids, monitor_counts, type = "n", ylim = c(0, 16),
+     xlim = c(0, 2.5), xlab = "Perpendicular distance (km)", ylab = "Animals per bin")
+rect(head(monitor_breaks, -1), 0, tail(monitor_breaks, -1), 12,
+     col = adjustcolor(rd, 0.25), border = "white")
+rect(head(monitor_breaks, -1), 0, tail(monitor_breaks, -1),
+     monitor_counts, col = bl, border = "white")
+text(monitor_mids, rep(12.7, length(monitor_counts)),
+     sprintf("%.2f", monitor_counts / 12), cex = 0.85)
+mtext("Pr(detected), assuming 12 animals per band", side = 3, line = 0.3,
+      cex = 0.75)
+legend("topright", c("Missed", "Detected"),
+       fill = c(adjustcolor(rd, 0.25), bl), bty = "n", horiz = TRUE)
+```
+
+- The proportion detected generally declines with distance.
+- Proportion observed is probability of detection $$\frac{\hib{Detected}}{\hir{Missed} + \hib{Detected}}$$
+- In a real survey, we do **not** know the red part of each bar.
+
+## Important distance sampling assumption #1
+
+We don't know the red part of the bar, but what do we **expect**?
+
+Equal-width bands alongside a line have **equal areas**.
+
+```{r line-bands, fig.height=2.4}
+par(mar = c(0, 0, 1, 0))
+plot(0, 0, type = "n", xlim = c(-0.2, 4.5), ylim = c(-0.5, 3.7),
+     axes = FALSE, xlab = "", ylab = "")
+for (j in 0:3) {
+  rect(j, 0, j + 1, 3, col = adjustcolor(bl, 0.12 + j * 0.08), border = "white")
+  text(j + 0.5, 1.5, "Same area")
+  text(j + 0.5, -0.3, paste("Band", j + 1))
+}
+segments(0, 0, 0, 3, lwd = 3)
+text(0.1, 3.4, "Transect line", adj = 0)
+```
+
+With random placement relative to animals, we expect similar numbers in
+these bands **on average across surveys**.
+
+Animals can still be clustered, and density can vary across the region.
+
+## Important distance sampling assumption #2
+
+1. Animals are equally likely to be at any distance from the line
+
+This tells us that the red part should be a rectangle, but doesn't tell us its height.
+
+```{r unknown-band-height, fig.height=1.9}
+plot_style()
+assumption_breaks <- seq(0, 2.5, length.out = 41)
+plot(0, 0, type = "n", xlim = c(0, 2.5), ylim = c(0, 14),
+     xlab = "Perpendicular distance (km)", ylab = "Animals per bin",
+     yaxt = "n")
+axis(2, at = c(0, 4, 8, 12), labels = rep("?", 4))
+rect(head(assumption_breaks, -1), 0, tail(assumption_breaks, -1), 12,
+     col = adjustcolor(rd, 0.25), border = "white")
+```
+
+Conventional distance sampling assumes **every animal on the line is detected**
+
+## Important distance sampling assumption #2
+
+1. Animals are equally likely to be at any distance from the line
+
+This tells us that the red part should be a rectangle, but doesn't tell us its height.
+
+```{r anchored-band-height, fig.height=1.9}
+plot_style()
+animals_per_narrow_bin <- 12 * diff(assumption_breaks)[1] / diff(monitor_breaks)[1]
+plot(0, 0, type = "n", xlim = c(0, 2.5), ylim = c(0, 3),
+     xlab = "Perpendicular distance (km)", ylab = "Animals per bin",
+     yaxt = "n")
+axis(2, at = 0:3)
+rect(head(assumption_breaks, -1), 0, tail(assumption_breaks, -1),
+     animals_per_narrow_bin,
+     col = adjustcolor(rd, 0.25), border = "white")
+rect(assumption_breaks[1], 0, assumption_breaks[2], animals_per_narrow_bin,
+     col = bl, border = "white")
+```
+
+Conventional distance sampling assumes **every animal on the line is detected**
+
+This anchors the curve so we can estimate how many animals were missed.
+
+## Correct inference depends on survey design
+
+If lines are placed independently of animal locations, a systematic drop
+in detections with distance can reveal declining detectability.
+
+If lines follow a road or habitat edge, the pattern might also reflect
+**where animals live**.
+
+- Fewer animals near a road could resemble poor detection close to the line.
+- More animals near a track could resemble very high detection there.
+
+\alert{A detection model cannot automatically correct biased line placement.}
+
+## Correct inference depends on survey design
+
+If animals are unavailable (i.e. submerged, underground) even on the line, this assumption can fail.
+
+A standard distance model does not estimate that additional loss.
+
+More advanced methods (mark-recapture distance sampling, MRDS) can estimate detection probability on the line.
+
+MRDS is not developed in this course, but key idea is to use repeated sampling of line transects. 
+
+\alert{A detection model cannot automatically correct for imperfect detection at distance zero.}
+
+# The detection function
+
+## What is a detection function?
+
+$g(x)$ means **the probability of detecting an animal at distance $x$**.
+
+```{r detection-function, fig.height=2.6}
+plot_style()
+x <- seq(0, 2.5, length.out = 300)
+plot(x, g(x), type = "l", col = bl, lwd = 3, ylim = c(0, 1.05),
+     xlab = "Distance from the line", ylab = "Detection probability")
+points(c(0, 1, 2), g(c(0, 1, 2)), pch = 16, col = bl)
+abline(h = 1, lty = 3, col = "grey60")
+```
+
+A value of 0.6 means that, under these conditions, about 60% of animals
+at that distance would be detected over many surveys.
+
+Perfect detection along the line encoded as $g(0) = 1$
+
+## Average detection within the survey strip
+
+The curve gives a probability at each distance. We also need the **average
+probability of detection within the strip**, called $p_d$.
+
+```{r average-detection, fig.height=2.6}
+plot_style()
+plot(x, g(x), type = "n", ylim = c(0, 1.05),
+     xlab = "Perpendicular distance", ylab = "Detection probability")
+rect(0, 0, 2.5, 1, col = adjustcolor(rd, 0.18), border = NA)
+polygon(c(x, rev(x)), c(g(x), rep(0, length(x))),
+        col = adjustcolor(bl, 0.5), border = NA)
+lines(x, g(x), col = bl, lwd = 3)
+text(1.65, 0.83, "Missed", col = rd)
+text(0.55, 0.3, "Detected", col = bl)
+```
+
+For a line transect, the blue share of the rectangle represents average
+detection. Software calculates this from the fitted curve.
+
+## Correct the count, then scale up
+
+$$\text{Estimated number in sampled area} = \frac{\text{Number detected}}{\text{Average detection probability}}$$
+
+A simple illustration:
+
+- Detect **60 animals**; estimate average detection as **0.6**.
+- Estimated number in the sampled area: $60 / 0.6 = 100$.
+- If that area is **10% of the region**, scale up: $100 / 0.1 = 1{,}000$.
+
+This separates **animals missed inside the sample** from **area not sampled**.
+Both corrections are needed to estimate regional abundance.
+
+<!-- Round numbers illustrate L04's estimator; they are not desert monitor results.
+This example assumes individual detections, representative area coverage and
+consistent detection within the pooled analysis. -->
+
+## What information is needed?
+
+| Information | What it contributes |
+|:--|:--|
+| Detections and distances | Estimate the detection curve and correction |
+| Actual transect lengths and strip width | Define the sampled area |
+| Transect identifiers, including zero counts | Estimate encounter rates and uncertainty |
+| Area of the target region | Scale density to total abundance |
+| Group size, where relevant | Convert group estimates to individuals |
+
+\vspace{0.2cm}
+The strip extends a chosen distance **on each side** of the line.
+Record effort even when no animals are detected.
+
+# Assumptions and their field implications
+
+## Assumptions
+
+The key assumptions of distance sampling are:
+
+1. The value of the detection function is known for at least one distance.
+2. Animals are equally likely to be at any distance from the line.
+3. Distances are independent.
+4. Distances are measured without error.
+5. Distances are measured to the initial location / no responsive movement.
+
+If these assumptions are met, observed distances are informative about how the detection function declines with distance and we can estimate a useful detection function.
+
+## Representative coverage of the region
+
+- Define the region to which the estimate should apply.
+- Use random lines, or a systematic layout with a random start.
+- Include the range of habitats and densities in that region.
+- Avoid choosing routes because animals are known to occur there.
+
+If some areas cannot be sampled, consider whether they need a separate
+stratum or a narrower definition of the target region.
+
+\alert{More detections on convenient routes do not guarantee a better estimate.}
+
+## Detect animals at their initial positions
+
+Distances should describe where animals were **before they responded to you**.
+
+\begin{center}
+\begin{tikzpicture}[x=1cm,y=1cm]
+\draw[very thick] (0,0) -- (0,1.8) node[above,font=\small] {Line};
+\fill[bl] (1.8,0.9) circle (0.09) node[above,font=\small] {Initial position};
+\draw[->,thick,rd] (2,0.9) -- (4.4,0.9);
+\fill[rd] (4.6,0.9) circle (0.09) node[above,font=\small] {After fleeing};
+\draw[dashed] (0,0.55) -- (1.8,0.55) node[midway,below,font=\small] {Correct distance};
+\end{tikzpicture}
+\end{center}
+
+- Search ahead and record the first position detected.
+- Movement before detection can change the distance pattern and bias estimates.
+- Count each animal or group once during a survey.
+
+## Accurate distances and appropriate detection units
+
+- Train observers and practise against measured distances.
+- Use rangefinders and bearings where practical.
+- Avoid rounding everything to convenient values such as 50 or 100 m.
+- If exact distances are unreliable, predefined distance bands are possible.
+
+For animals in **groups**, record the distance to the group centre and the
+number of individuals. Members of one group are not independent detections.
+
+Larger groups can be easier to detect; the analysis may need to account for this.
+
+## What if animals at zero distance are missed?
+
+Examples include submerged whales and nearby birds that remain silent.
+
+- Check whether the species is available to be seen or heard.
+- Check whether observers can detect available animals near the line or point.
+- Restrict inference to a clearly defined observable population when justified.
+
+Extensions using independent observers or information on availability can
+address some failures of perfect detection.
+
+\alert{Adding a more flexible curve does not solve missed animals at zero distance.}
+
+# Choosing and checking a detection model$^*$
+
+## Two common shapes
+
+A **key function** supplies the basic shape of the detection curve.
+
+```{r key-functions, fig.height=2.6}
+plot_style(c(1, 2))
+u <- seq(0, 3, length.out = 300)
+plot(u, g(u), type = "l", col = bl, lwd = 3, ylim = c(0, 1.05),
+     main = "Half-normal", xlab = "Distance", ylab = "Detection probability")
+hr <- function(u) ifelse(u == 0, 1, 1 - exp(-(u / 1.2)^-4))
+plot(u, hr(u), type = "l", col = rd, lwd = 3, ylim = c(0, 1.05),
+     main = "Hazard-rate", xlab = "Distance", ylab = "Detection probability")
+```
+
+- **Half-normal:** a smooth decline; a useful simple starting point.
+- **Hazard-rate:** can represent a wider, flatter shoulder near the line.
+
+Function shapes differ by study and may depend on, for example, species, habitat, and observation method.
+    
+<!-- The hazard-rate expression in L05 omits "1 -". The illustration uses
+1 - exp(-(x/scale)^(-shape)), with limiting value one at zero distance. -->
+
+## What is the shoulder?
+
+The **shoulder** is the region close to the line where detection remains high.
+
+```{r shoulder, fig.height=2.6}
+plot_style()
+plot(u, hr(u), type = "l", col = bl, lwd = 3, ylim = c(0, 1.08),
+     xlab = "Distance", ylab = "Detection probability")
+arrows(0.05, 0.9, 0.9, 0.9, code = 3, angle = 90, length = 0.06)
+text(0.48, 0.79, "Shoulder")
+```
+
+Search thoroughly near the line. A sudden drop immediately away from zero
+can make the correction sensitive to the model chosen.
+
+## Adjustment terms: a little extra flexibility
+
+An **adjustment term** modifies a key function to fit a broader range of shapes.
+
+```{r adjustment, fig.height=2.6}
+plot_style()
+base <- g(u, 1.15)
+adjusted <- base * (1 - 0.08 * cos(2 * pi * u / 3)) / (1 - 0.08)
+plot(u, base, type = "l", col = "grey45", lwd = 2, lty = 2,
+     ylim = c(0, 1.05), xlab = "Distance", ylab = "Detection probability")
+lines(u, adjusted, col = bl, lwd = 3)
+legend("topright", c("Key function", "Key + adjustment"),
+       col = c("grey45", bl), lty = c(2, 1), lwd = c(2, 3), bty = "n")
+```
+
+Start simple. Add flexibility only when supported by the data.
+The curve should stay biologically plausible, with $g(0)=1$.
+
+## Fit the pattern, not every bump
+
+```{r model-complexity, fig.height=2.8}
+plot_style(c(1, 3))
+y <- c(1, 0.96, 0.99, 0.78, 0.79, 0.52, 0.5, 0.28, 0.22, 0.07)
+z <- seq(0, 3, length.out = length(y))
+for (j in 1:3) {
+  plot(z, y, pch = 16, col = "grey55", ylim = c(0, 1.05),
+       xlab = "Distance", ylab = if (j == 1) "Relative detections" else "",
+       main = c("Too rigid", "Useful smooth shape", "Follows every bump")[j])
+  if (j == 1) abline(h = 0.7, col = rd, lwd = 2)
+  if (j == 2) lines(u, g(u, 1.4), col = bl, lwd = 2)
+  if (j == 3) lines(z, y, col = rd, lwd = 2)
+}
+```
+
+Small bumps can be sampling noise. Too much flexibility can give an unstable
+correction when we repeat the survey.
+
+<!-- Adapted visually from L06's complexity example. These are illustrative
+patterns, not three fitted distance models or probability-scaled histograms. -->
+
+## Model selection by AIC
+
+**AIC** balances fit to the data against model complexity.
+
+- Compare a small set of plausible detection models.
+- Lower AIC indicates stronger support within that set.
+- Similar AIC values mean the choice is uncertain.
+- Compare models fitted to **the same observations and truncation distance**.
+
+A model with the lowest AIC can still fit poorly.
+We must also check whether it describes the data adequately.
+
+## Model selection vs Goodness of fit
+
+<!-- Source: L06-Distance_Sampling_III.Rmd, slide 29 (Goodness of fit). Wording retained except deletions, typo corrections and noted clarifications. -->
+
+- use model selection (AIC) to select the best model
+    - relative measure that compares a candidate model set
+    - says nothing about the model in an absolute sense
+    - eg, *best of a bad bunch*?
+
+- need some measure of absolute performance to check the best model
+    - goodness-of-fit tests 
+    - a way to check if a model is adequate
+    - is it worthwhile drawing inference from it
+    
+## Goodness of fit: observed versus expected
+
+Compare counts in distance bands with the counts predicted by the model.
+
+```{r goodness-of-fit, fig.height=2.8}
+plot_style(c(1, 2))
+obs <- c(22, 20, 19, 14, 10, 7, 5, 3)
+bins <- seq(0, 3, length.out = 9)
+expected <- diff(vapply(bins, function(b) integrate(function(t) g(t, 1.4), 0, b)$value,
+                        numeric(1)))
+expected <- sum(obs) * expected / sum(expected)
+for (j in 1:2) {
+  mids <- barplot(obs, col = adjustcolor(bl, 0.35), border = NA,
+                 ylim = c(0, 28), names.arg = 1:8,
+                 xlab = "Distance band (near to far)", ylab = "Detections",
+                 main = c("Plausible fit", "Systematic mismatch")[j])
+  pred <- if (j == 1) expected else rep(sum(obs) / length(obs), length(obs))
+  lines(mids, pred, col = rd, lwd = 2, type = "b", pch = 16)
+}
+```
+
+Blue bars: observed. Red points: expected. Persistent mismatches need attention.
+
+## What can model checks tell us?
+
+- Inspect the distance histogram and fitted model together.
+- A Q--Q plot compares the observed distance distribution with the model:
+  good agreement follows a diagonal line.
+- Goodness-of-fit tests help identify discrepancies.
+- Look for rounding, a deficit near zero, or an implausible curve.
+
+A good fit does **not** prove representative placement, accurate distances,
+or perfect detection at zero.
+
+A nonsignificant test is especially uninformative with few detections.
+
+## Truncation: choosing the outer distance
+
+Very distant detections are often sparse and difficult to measure accurately.
+
+**Right truncation** removes detections beyond a chosen distance $w$.
+
+```{r truncation, fig.height=2.0}
+plot_style()
+plot(u, g(u, 1.1), type = "l", col = bl, lwd = 3, ylim = c(0, 1.05),
+     xlab = "Distance", ylab = "Detection probability")
+rect(2.4, 0, 3, 1.05, col = adjustcolor("grey60", 0.25), border = NA)
+abline(v = 2.4, lty = 2)
+text(2.7, 0.72, "Excluded\ntail")
+text(2.3, 0.97, "w", adj = 1)
+```
+
+Fit and calculate sampled area using the **same** distance limit.
+
+Inspect the histogram and remove the sparse, unreliable tail. For lines,
+removing the farthest **5% of detections** is a common starting point; check
+model fit and sensitivity to nearby cutoffs.
+
+<!-- Truncation guidance: https://workshops.distancesampling.org/standrews-2019/intro/lectures/BlockB-detfns-esw-f0.pdf -->
+
+Truncation does not repair a flawed survey.
+
+## An abundance estimate needs uncertainty
+
+Uncertainty comes from:
+
+- Variation in encounter rates between transects.
+- Estimating the detection function from a finite sample.
+- Estimating group size, when animals are counted in groups.
+
+Report the estimate with a **confidence interval**, as in plot sampling.
+A wide interval limits how clearly we can detect population change.
+
+More independent transects improve coverage and help quantify uncertainty;
+many sightings on one line provide little information about variation across lines.
+
+# Point transects
+
+## Point sampling
+
+<!-- Source: L07-Distance_Sampling_IV.Rmd, slide 4 (Point sampling). Wording retained except deletions, typo corrections and noted clarifications. -->
+
+An alternative to surveying along lines is to survey from static points
+
+- widely used in ecology, specifically for birds
+- advantages for species that respond to surveyor moving
+- advantages for environments where its hard to walk a straight line
+
+\begin{center}
+\includegraphics[width=0.44\textwidth,height=0.47\textheight,keepaspectratio]{figures/region-with-strips.pdf}
+\hfill
+\includegraphics[width=0.44\textwidth,height=0.47\textheight,keepaspectratio]{figures/region-with-plots.pdf}
+\end{center}
+
+## Point sampling
+
+<!-- Source: L07-Distance_Sampling_IV.Rmd, slide 5 (Point sampling). Wording retained except deletions, typo corrections and noted clarifications. -->
+
+Measure the \alert{radial distance from point to observation}
+
+\vspace{-1em}
+
+\begin{center}
+\includegraphics[width=0.6\textwidth]{figures/point_transect.pdf}
+\end{center}
+
+## Equal-width rings have different areas
+
+Compare a strip beside a line with rings around a point.
+
+```{r strip-versus-rings, fig.height=2.9}
+par(mfrow = c(1, 2), mar = c(0, 0, 2, 0))
+plot(0, 0, type = "n", xlim = c(-0.4, 4.5), ylim = c(-0.4, 4.5),
+     asp = 1, axes = FALSE, xlab = "", ylab = "", main = "Line: equal areas")
+for (j in 0:3) {
+  rect(j, 0, j + 1, 4, col = adjustcolor(bl, 0.15 + j * 0.1), border = "white")
+  text(j + 0.5, 2, "1")
+}
+segments(0, 0, 0, 4, lwd = 3)
+plot(0, 0, type = "n", xlim = c(-4.5, 4.5), ylim = c(-4.5, 4.5),
+     asp = 1, axes = FALSE, xlab = "", ylab = "", main = "Point: increasing areas")
+theta <- seq(0, 2 * pi, length.out = 300)
+for (j in 4:1) polygon(j * cos(theta), j * sin(theta),
+                        col = adjustcolor(bl, 0.15 + (j - 1) * 0.1), border = "white")
+points(0, 0, pch = 16)
+text(c(0.5, 1.5, 2.5, 3.5), rep(0, 4), c("1", "3", "5", "7"))
+```
+
+Numbers show relative areas. With similar animal density, wider outer rings
+contain more animals: **1, 3, 5, 7**, rather than equal numbers.
+
+## What would we see with perfect detection?
+
+```{r perfect-line-point, fig.height=2.6}
+plot_style(c(1, 2))
+barplot(rep(10, 4), names.arg = 1:4, col = bl, border = NA,
+        ylim = c(0, 75), main = "Line transect", xlab = "Distance band",
+        ylab = "Expected animals")
+barplot(10 * c(1, 3, 5, 7), names.arg = 1:4, col = bl, border = NA,
+        ylim = c(0, 75), main = "Point transect", xlab = "Distance band",
+        ylab = "Expected animals")
+```
+
+Even when **every animal is detected**, counts rise with radial distance
+because the rings get larger.
+
+The equal-counts argument for line transects does not apply to points.
+
+## More space, but poorer detection
+
+For point surveys, two effects act together:
+
+```{r point-distance-pattern, fig.height=2.7}
+plot_style(c(1, 3))
+r <- seq(0, 3, length.out = 300)
+plot(r, r, type = "l", lwd = 3, col = grn, xlab = "Radial distance",
+     ylab = "Relative area", main = "More space")
+plot(r, g(r, 1), type = "l", lwd = 3, col = bl, xlab = "Radial distance",
+     ylab = "Detection probability", main = "Harder to detect")
+plot(r, r * g(r, 1), type = "l", lwd = 3, col = rd, xlab = "Radial distance",
+     ylab = "Relative detections", main = "Combined pattern")
+```
+
+The observed histogram can peak **away from zero**, even though detection
+probability is highest at zero.
+
+<!-- Last panel is an unnormalised expected distance distribution, not g(r).
+The software accounts for radial geometry; no integral or derivative needed. -->
+
+## Software handles changes in transect types
+
+Both survey types estimate a detection curve and correct for missed animals.
+
+| | Line transect | Point transect |
+|:--|:--|:--|
+| Distance recorded | Perpendicular to line | Radial from point |
+| Equal-width bands | Equal areas | Increasing areas |
+| Survey effort | Actual line length | Number of point surveys |
+| Surveyed shape | Strip | Circle |
+
+\vspace{0.2cm}
+\alert{Specify the correct survey type in the analysis.}
+
+
+## Things to consider when using point counts 
+
+A point survey aims to describe animals present at a **snapshot in time**.
+
+- Long counts allow animals to enter the surveyed circle.
+- Animals moving closer may be detected at distances smaller than their initial ones.
+- Silent birds near the point can still violate perfect detection.
+- Repeated songs from the same bird are not additional individuals.
+
+A snapshot protocol records birds' locations at a designated moment.
+The time needed to locate birds and the species' behaviour both matter.
+
+Movement considerations apply to line transects too.
+
+<!-- L07 comparison, clarified using Buckland (2006), sections Methods 1--2.
+Counting songbursts instead requires cue-count methods and cue-rate information;
+that extension is outside this introductory lecture. -->
+
+## Example: comparing methods at Montrave$^*$
+
+At Montrave, Scotland, Buckland (2006) compared surveys of male songbirds
+with intensive territory mapping.
+
+\small
+
+| Method | Chaffinch density | Wren density |
+|:--|:--|:--|
+| Territory mapping | 0.75 | 1.30 |
+| Conventional point transects | 1.03 (0.74--1.43) | 1.29 (0.80--2.11) |
+| Line transects | 0.64 (0.46--0.90) | 1.07 (0.87--1.31) |
+
+Densities are males per hectare; parentheses show 95% confidence intervals.
+
+The estimates and intervals show agreement and uncertainty; the intensive
+mapping result is a reference estimate, rather than a known exact truth.
+
+\footnotesize
+Source: [Buckland (2006), The Auk 123: 345--357](https://doi.org/10.1093/auk/123.2.345);
+
+
+## Comparing effort at the same precision$^*$
+
+Estimated survey hours needed to reach **CV = 10%** at Montrave:
+
+```{r montrave-effort, fig.height=2.5}
+plot_style()
+par(mar = c(3.5, 3.8, 3.5, 0.7))
+effort_bars <- barplot(rbind(c(28, 61), c(22, 11)), beside = TRUE,
+        names.arg = c("Chaffinch", "Wren"), col = c("grey65", bl),
+        border = NA, ylim = c(0, 75), ylab = "Estimated field hours")
+text(effort_bars, c(28, 22, 61, 11) + 3, c(28, 22, 61, 11), cex = 0.9)
+legend("top", c("Conventional point transects", "Line transects"),
+       fill = c("grey65", bl), bty = "n", cex = 0.85,
+       horiz = TRUE, inset = c(0, -0.2), xpd = NA)
+```
+
+CV describes uncertainty relative to the estimate: **lower means more precise**.
+Lines required less effort here, especially for wren. The choice still depends
+on species, terrain and the feasibility of representative routes.
+
+\footnotesize
+Source: [Buckland (2006)](https://doi.org/10.1093/auk/123.2.345).
+
+<!-- Hours are extrapolated to a common precision target, not the actual
+hours used in the original surveys. CV = SE / estimate. The source study
+also compared snapshot and cue-count methods; those are not pooled with the
+conventional point-count figures shown here. -->
+
+# Detection can depend on more than distance$^*$
+
+## Detection covariates
+
+A **covariate** is a recorded factor that may affect detection.
+
+- **Survey:** observer, vessel or observation equipment.
+- **Environment:** habitat, sea state, weather or visibility.
+- **Animal or group:** sex or group size.
+
+Record important factors consistently during the survey, including conditions
+on surveys with no detections.
+
+Use a few ecologically justified covariates rather than a long list of
+possible predictors.
+
+## The same distance, different detection
+
+```{r covariate-curves, fig.height=2.6}
+plot_style()
+plot(u, g(u, 1.5), type = "l", col = bl, lwd = 3, ylim = c(0, 1.05),
+     xlab = "Distance", ylab = "Detection probability")
+lines(u, g(u, 0.8), col = rd, lwd = 3)
+legend("topright", c("Good visibility", "Poor visibility"),
+       col = c(bl, rd), lwd = 3, bty = "n")
+```
+
+Including visibility allows different detection ranges under different conditions.
+The correction is larger where average detectability is lower.
+
+Both curves still assume certain detection at zero distance.
+
+## Do we always need covariates?
+
+A model using only distance can work well when detection varies, provided:
+
+- Animals at zero distance are detected under all relevant conditions.
+- Conditions affecting detection are independent of distance from the line or point.
+
+If these conditions are met, CDS is called \alert{pooling robust}, meaning the pooled curve adequately describes the combined distance pattern.
+
+Covariates can help when differences are large, improve precision, and support
+fair comparisons between habitats or survey conditions.
+
+A pooled correction adequate for a regional total can still be inappropriate
+for separate habitat estimates with different detectabilities.
+
+<!-- L08: pooling robustness is conditional, not a guarantee that any chosen
+parametric key will adequately fit an arbitrary mixture of detection curves. -->
+
+## When to include covariates
+
+There are situations when, despite pooling robustness, we might want to account for detection heterogeneity by including covariates:
+
+- It can improve precision (or equivalently reduce sample size requirements).
+- Abundance estimates for sub-regions can be biased if using the 'pooled' detection function.
+- If we are specifically interested in the effect of covariates on detectability.
+
+
+# Summary
+
+## Lecture overview
+
+- Distance sampling (DS) estimates **abundance** by accounting for imperfect detection in ecological surveys.
+- We estimate a **detection function** describing how detectability varies with distance from an observer, giving us an estimate of how many animals were missed.
+- Key *conventional* DS assumptions were **uniform animal density** relative to transect placement, and **perfect detection** at zero distance. Relaxing these requires more advanced DS models.
+- Common survey types are **line transects** or **point sampling**. Software handles the geometry.
+- Covariates can improve precision and aid interpretation, but are not needed for unbiased global estimates.
+
+## From survey to estimate
+
+\begin{center}
+\begin{tikzpicture}[x=1cm,y=1cm]
+\foreach \y/\txt in {3/Representative lines or points,2/Detections + distances + survey effort,1/Detection model + checks,0/Density and abundance + confidence intervals} {
+  \node[draw=bl,fill=bl!5,rounded corners,text width=8.5cm,align=center,minimum height=0.65cm,font=\small] at (0,\y) {\txt};
+}
+\foreach \y in {3,2,1} {\draw[->,thick] (0,\y-0.36) -- (0,\y-0.63);}
+\end{tikzpicture}
+\end{center}
+
+The practical will work through survey records, fitting candidate models in R,
+checking fit, and interpreting the resulting estimates.
+
+## Online distance sampling resources
+
+St Andrews, and CREEM specifically, is where distance sampling was developed, and there is a large catalogue of online resources and training material, including more advanced topics:
+
+- Online training and resources: https://workshops.distancesampling.org/online-course/
+- Other distance sampling resources: http://distancesampling.org/
+

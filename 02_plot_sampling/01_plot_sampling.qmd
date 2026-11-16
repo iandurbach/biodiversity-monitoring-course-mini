@@ -1,0 +1,1824 @@
+---
+title: Plot Sampling
+subtitle: Biodiversity Monitoring Course, Module 2
+fontsize: 10pt
+format:
+  beamer:
+    theme: metropolis
+    incremental: false
+    slide-level: 2
+    pdf-engine: xelatex
+    syntax-highlighting: tango
+    include-in-header:
+      text: |
+        \usepackage{arydshln}
+        \usepackage{animate}
+        \definecolor{bl}{rgb}{0.16,0.32,0.75}
+        \definecolor{rd}{rgb}{0.82,0.1,0.26}
+        \definecolor{grn}{rgb}{0.55,0.71,0.0}
+        \providecommand{\hig}[1]{\textcolor{grn}{#1}}
+        \providecommand{\hir}[1]{\textcolor{rd}{#1}}
+        \setbeamertemplate{title page}{%
+          \centering
+          \includegraphics[width=0.27\textwidth,height=1.1cm,keepaspectratio]{../logos/01-standard-black-text.png}\hfill
+          \includegraphics[width=0.40\textwidth,height=1.1cm,keepaspectratio]{../logos/creem-long.png}\hfill
+          \includegraphics[width=0.19\textwidth,height=1.1cm,keepaspectratio]{../logos/SLT-Logo-2016-300dpi-Regular.jpg}\par
+          \vspace{0.35cm}
+          {\LARGE\inserttitle\par}
+          \vspace{0.35cm}
+          {\normalsize\insertsubtitle\par}
+          \vspace{0.25cm}
+          {\small UNDP-GEF Project\par}
+          \vspace{0.15cm}
+          {\small ``Integrated Community-based Management of High Value Mountain Ecosystems in Southern Kyrgyzstan for Multiple Benefits''\par}
+          \vfill
+          {\fontsize{6}{7}\selectfont
+          \textcopyright{} 2026 University of St Andrews (Centre for Research into Ecological and Environmental Modelling, CREEM), Snow Leopard Trust, developed within the framework of the UNDP-GEF Pamir-Alai project. Licensed under CC BY 4.0. You may share and adapt these materials if you keep this credit and indicate any changes.\par}
+        }
+classoption: t
+urlcolor: teal
+---
+
+## Objectives of this topic
+
+```{r setup, echo=FALSE,warning=FALSE,message=FALSE}
+library(tidyverse); library(cowplot); library(nimble); library(primer)
+library(latex2exp); library(ggthemes); library(popbio)
+library(plotrix); library(scico); library(viridis); library(ggridges)
+library(gganimate)
+
+#global par
+knitr::opts_knit$set(global.par = TRUE) 
+
+#folder where images are stored
+knitr::opts_chunk$set(fig.path="figures/01_plot_sampling-")
+
+#function to control font size of r code in code chunks
+def.chunk.hook  <- knitr::knit_hooks$get("chunk")
+knitr::knit_hooks$set(
+  chunk = function(x, options){
+            x <- def.chunk.hook(x, options)
+            ifelse(options$size != "normalsize", 
+                   paste0("\n \\", options$size,"\n\n", x, "\n\n \\normalsize"), 
+                   x)
+})
+
+# tiny < scriptsize < footnotesize < small < 
+# normalsize < large	< Large < LARGE < huge < Huge
+
+# place images using tikz (maximum flexibility for placement) 
+#\begin{tikzpicture}[remember picture, overlay]
+#\node[xshift=-2.5cm, yshift=-2.4cm] at (current page){
+
+# place equations using tikz (maximum flexibility for placement) 
+# Original title illustration omitted.
+#\node[xshift=3.7cm, yshift=-1.5cm] at (current page){\small $z_1 \sim \mbox{Bernoulli}(\psi_1)$};
+#\node[xshift=3.7cm, yshift=-2.1cm] at (current page){\small $z_{it} \sim \mbox{Bernoulli}(\psi_{it})$};
+#\node[xshift=3.7cm, yshift=-2.7cm] at (current page){\small $\psi_{it} = (1-z_{it-1})\gamma + z_{it-1}(1-\varepsilon)$};
+#\node[xshift=3.7cm, yshift=-3.3cm] at (current page){\small $y_{it} \sim \mbox{binomial}(J_{it},p\times z_{it})$};
+#\end{tikzpicture}
+
+
+grn <- rgb(0.55, 0.71, 0.0, maxColorValue = 1)
+rd <- rgb(0.82, 0.1, 0.26, maxColorValue = 1)
+bl <- rgb(0.16, 0.32, 0.75, maxColorValue = 1)
+```
+
+```{r simulation-setup, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+library(tidyverse)
+library(spatstat.geom)
+library(spatstat.random)
+
+set.seed(2409)
+
+# Shared settings -------------------------------------------------------------
+region_side <- 20
+region_area <- region_side^2
+plot_radius <- 1
+tree_abundance <- 500
+n_repeats <- 2000
+blue <- rgb(0.16, 0.32, 0.75)
+red <- rgb(0.82, 0.1, 0.26)
+
+# Count trees that occur in at least one circular plot.
+count_in_plots <- function(trees, centres, radius = plot_radius) {
+  inside <- vapply(seq_len(nrow(centres)), function(j) {
+    (trees$x - centres$x[j])^2 + (trees$y - centres$y[j])^2 <= radius^2
+  }, logical(nrow(trees)))
+  sum(rowSums(inside) > 0)
+}
+
+# Place circular plots at random, rejecting candidates that overlap an
+# accepted plot. Plot centres stay at least one radius from the region edge.
+random_nonoverlap_centres <- function(n, side = region_side,
+                                      radius = plot_radius,
+                                      x_bounds = c(0, side)) {
+  centres <- tibble(x = numeric(), y = numeric())
+  attempts <- 0
+  while (nrow(centres) < n && attempts < 10000) {
+    candidate <- tibble(x = runif(1, x_bounds[1] + radius, x_bounds[2] - radius),
+                        y = runif(1, radius, side - radius))
+    far_enough <- nrow(centres) == 0 ||
+      all((centres$x - candidate$x)^2 + (centres$y - candidate$y)^2 >=
+            (2 * radius)^2)
+    if (far_enough) centres <- bind_rows(centres, candidate)
+    attempts <- attempts + 1
+  }
+  stopifnot(nrow(centres) == n)
+  centres
+}
+
+stratified_centres <- function() {
+  bind_rows(
+    random_nonoverlap_centres(4, x_bounds = c(0, region_side / 2)) |>
+      mutate(stratum = "West"),
+    random_nonoverlap_centres(5, x_bounds = c(region_side / 2, region_side)) |>
+      mutate(stratum = "East")
+  )
+}
+
+# Randomize the origin of an otherwise regular grid while keeping all plots
+# inside the survey region. Illustrative maps use the centred grid itself.
+random_start <- function(centres, x_shift = c(-2, 2), y_shift = c(-2, 2)) {
+  centres |>
+    mutate(x = x + runif(1, x_shift[1], x_shift[2]),
+           y = y + runif(1, y_shift[1], y_shift[2]))
+}
+
+# Coordinates used to draw circular plots with ggplot2.
+circle_data <- function(centres, design, radius = plot_radius) {
+  theta <- seq(0, 2 * pi, length.out = 100)
+  map_dfr(seq_len(nrow(centres)), function(j) {
+    tibble(x = centres$x[j] + radius * cos(theta),
+           y = centres$y[j] + radius * sin(theta),
+           plot = paste(design, j), design = design)
+  })
+}
+
+estimate_abundance <- function(trees, centres, radius = plot_radius) {
+  if ("stratum" %in% names(centres)) {
+    return(sum(vapply(split(centres, centres$stratum), function(plots) {
+      coverage_h <- nrow(plots) * pi * radius^2 / (region_area / 2)
+      count_in_plots(trees, plots, radius) / coverage_h
+    }, numeric(1))))
+  }
+  coverage <- nrow(centres) * pi * radius^2 / region_area
+  count_in_plots(trees, centres, radius) / coverage
+}
+
+theme_sampling <- theme_bw(base_size = 10) +
+  theme(panel.grid = element_blank(),
+        strip.background = element_rect(fill = "grey90"),
+        legend.position = "none")
+
+# Example 1: increasing sampling coverage -------------------------------------
+effort_centres <- list(
+  `9 plots`  = expand_grid(x = seq(3, 17, length.out = 3),
+                           y = seq(3, 17, length.out = 3)),
+  `16 plots` = expand_grid(x = seq(2.5, 17.5, length.out = 4),
+                           y = seq(2.5, 17.5, length.out = 4)),
+  `25 plots` = expand_grid(x = seq(2, 18, length.out = 5),
+                           y = seq(2, 18, length.out = 5))
+)
+
+uniform_example <- tibble(x = runif(tree_abundance, 0, region_side),
+                          y = runif(tree_abundance, 0, region_side))
+
+effort_map_points <- imap_dfr(effort_centres, function(centres, label) {
+  uniform_example |>
+    mutate(sampled = vapply(seq_len(n()), function(i) {
+      any((x[i] - centres$x)^2 + (y[i] - centres$y)^2 <= plot_radius^2)
+    }, logical(1)), design = label)
+}) |>
+  mutate(design = factor(design, levels = names(effort_centres)))
+effort_map_circles <- imap_dfr(effort_centres, circle_data)
+effort_map_circles <- effort_map_circles |>
+  mutate(design = factor(design, levels = names(effort_centres)))
+
+effort_map <- ggplot(effort_map_points, aes(x, y, colour = sampled)) +
+  geom_point(size = 0.45) +
+  geom_path(data = effort_map_circles,
+            aes(x, y, group = plot), inherit.aes = FALSE, linewidth = 0.3) +
+  scale_colour_manual(values = c(`FALSE` = "grey75", `TRUE` = blue)) +
+  coord_equal(xlim = c(0, region_side), ylim = c(0, region_side), expand = FALSE) +
+  facet_wrap(~design, nrow = 1) + labs(x = NULL, y = NULL) + theme_sampling
+
+effort_results <- map_dfr(seq_len(n_repeats), function(rep) {
+  imap_dfr(effort_centres, function(centres, label) {
+    margin <- min(min(centres$x) - plot_radius,
+                  region_side - plot_radius - max(centres$x))
+    tibble(replicate = rep, design = label,
+           estimate = estimate_abundance(
+             uniform_example,
+             random_start(centres, c(-margin, margin), c(-margin, margin))))
+  })
+}) |>
+  mutate(design = factor(design, levels = names(effort_centres)))
+
+effort_summary <- effort_results |>
+  group_by(design) |>
+  summarise(mean = mean(estimate), variance = var(estimate), .groups = "drop")
+
+effort_hist <- ggplot(effort_results, aes(estimate)) +
+  geom_histogram(binwidth = 20, boundary = 0, fill = blue,
+                 colour = "white", linewidth = 0.2) +
+  geom_vline(xintercept = tree_abundance, colour = red, linewidth = 0.9) +
+  facet_wrap(~design, nrow = 1) +
+  coord_cartesian(xlim = c(200, 800)) +
+  labs(x = expression(hat(N)), y = "Number of surveys") + theme_sampling
+
+ggsave("figures/juniper/coverage-designs-fixedpop.pdf", effort_map, width = 9, height = 3)
+ggsave("figures/juniper/coverage-histograms-fixedpop.pdf", effort_hist, width = 9, height = 3)
+
+# Example 2: sampling a west-to-east density gradient -------------------------
+systematic_centres <- expand_grid(x = c(3, 10, 17), y = c(3, 10, 17))
+preferential_centres <- expand_grid(x = c(11, 14.5, 18), y = c(3, 10, 17))
+
+# f(x) is proportional to x^2, so inverse-transform sampling gives x = L U^(1/3).
+gradient_population <- function(n = tree_abundance) {
+  tibble(x = region_side * runif(n)^(1/3),
+         y = runif(n, 0, region_side))
+}
+
+gradient_example <- gradient_population()
+gradient_example_centres <- list(
+  Systematic = systematic_centres,
+  Random = random_nonoverlap_centres(9),
+  Stratified = stratified_centres(),
+  `Eastern-biased` = preferential_centres
+)
+
+gradient_map_points <- imap_dfr(gradient_example_centres,
+                                ~mutate(gradient_example, design = .y)) |>
+  mutate(design = factor(design,
+                         levels = c("Systematic", "Random", "Stratified", "Eastern-biased")))
+gradient_map_circles <- imap_dfr(gradient_example_centres, circle_data)
+gradient_map_circles <- gradient_map_circles |>
+  mutate(design = factor(design,
+                         levels = c("Systematic", "Random", "Stratified", "Eastern-biased")))
+gradient_map <- ggplot(gradient_map_points, aes(x, y)) +
+  geom_vline(data = tibble(design = factor("Stratified",
+               levels = levels(gradient_map_points$design))),
+             xintercept = region_side / 2, linetype = "dashed",
+             colour = "grey45", linewidth = 0.3) +
+  geom_point(colour = blue, size = 0.5, alpha = 0.8) +
+  geom_path(data = gradient_map_circles,
+            aes(x, y, group = plot), inherit.aes = FALSE, linewidth = 0.35) +
+  coord_equal(xlim = c(0, region_side), ylim = c(0, region_side), expand = FALSE) +
+  facet_wrap(~design, nrow = 1) + labs(x = "West  →  East", y = NULL) + theme_sampling
+
+gradient_results <- map_dfr(seq_len(n_repeats), function(rep) {
+  layouts <- list(Systematic = random_start(systematic_centres),
+                  Random = random_nonoverlap_centres(9),
+                  Stratified = stratified_centres(),
+                  `Eastern-biased` = random_start(
+                    preferential_centres, c(-1, 1), c(-2, 2)))
+  imap_dfr(layouts, function(centres, label) {
+    tibble(replicate = rep, design = label,
+           estimate = estimate_abundance(gradient_example, centres))
+  })
+}) |>
+  mutate(design = factor(design,
+                         levels = c("Systematic", "Random", "Stratified", "Eastern-biased")))
+
+gradient_summary <- gradient_results |>
+  group_by(design) |>
+  summarise(mean = mean(estimate), variance = var(estimate), .groups = "drop")
+
+gradient_hist <- ggplot(gradient_results, aes(estimate)) +
+  geom_histogram(binwidth = 25, boundary = 0, fill = blue,
+                 colour = "white", linewidth = 0.2) +
+  geom_vline(xintercept = tree_abundance, colour = red, linewidth = 0.9) +
+  facet_wrap(~design, nrow = 1) +
+  coord_cartesian(xlim = c(0, 1200)) +
+  labs(x = expression(hat(N)), y = "Number of surveys") + theme_sampling
+
+ggsave("figures/juniper/gradient-designs-fixedpop.pdf", gradient_map, width = 9, height = 3)
+ggsave("figures/juniper/gradient-histograms-fixedpop.pdf", gradient_hist, width = 9, height = 3)
+
+# Example 3: sampling a clustered population ----------------------------------
+survey_window <- owin(c(0, region_side), c(0, region_side))
+
+# rThomas generates parent points and Gaussian clusters around them. We retain
+# 500 offspring so every realization has the same true abundance.
+clustered_population <- function(n = tree_abundance) {
+  repeat {
+    pattern <- rThomas(kappa = 0.08, scale = 0.7, mu = 17,
+                       win = survey_window)
+    if (pattern$n >= n) {
+      keep <- sample.int(pattern$n, n)
+      return(tibble(x = pattern$x[keep], y = pattern$y[keep]))
+    }
+  }
+}
+
+cluster_example <- clustered_population()
+cluster_example_centres <- list(
+  Systematic = systematic_centres,
+  Random = random_nonoverlap_centres(9),
+  Stratified = stratified_centres(),
+  `Eastern-biased` = preferential_centres
+)
+cluster_map_points <- imap_dfr(cluster_example_centres,
+                               ~mutate(cluster_example, design = .y)) |>
+  mutate(design = factor(design,
+                         levels = c("Systematic", "Random", "Stratified", "Eastern-biased")))
+cluster_map_circles <- imap_dfr(cluster_example_centres, circle_data)
+cluster_map_circles <- cluster_map_circles |>
+  mutate(design = factor(design,
+                         levels = c("Systematic", "Random", "Stratified", "Eastern-biased")))
+cluster_map <- ggplot(cluster_map_points, aes(x, y)) +
+  geom_vline(data = tibble(design = factor("Stratified",
+               levels = levels(cluster_map_points$design))),
+             xintercept = region_side / 2, linetype = "dashed",
+             colour = "grey45", linewidth = 0.3) +
+  geom_point(colour = blue, size = 0.5, alpha = 0.75) +
+  geom_path(data = cluster_map_circles,
+            aes(x, y, group = plot), inherit.aes = FALSE, linewidth = 0.35) +
+  coord_equal(xlim = c(0, region_side), ylim = c(0, region_side), expand = FALSE) +
+  facet_wrap(~design, nrow = 1) + labs(x = NULL, y = NULL) + theme_sampling
+
+cluster_results <- map_dfr(seq_len(n_repeats), function(rep) {
+  layouts <- list(Systematic = random_start(systematic_centres),
+                  Random = random_nonoverlap_centres(9),
+                  Stratified = stratified_centres(),
+                  `Eastern-biased` = random_start(
+                    preferential_centres, c(-1, 1), c(-2, 2)))
+  imap_dfr(layouts, function(centres, label) {
+    tibble(replicate = rep, design = label,
+           estimate = estimate_abundance(cluster_example, centres))
+  })
+}) |>
+  mutate(design = factor(design,
+                         levels = c("Systematic", "Random", "Stratified", "Eastern-biased")))
+
+cluster_summary <- cluster_results |>
+  group_by(design) |>
+  summarise(mean = mean(estimate), variance = var(estimate), .groups = "drop")
+
+cluster_hist <- ggplot(cluster_results, aes(estimate)) +
+  geom_histogram(binwidth = 50, boundary = 0, fill = blue,
+                 colour = "white", linewidth = 0.2) +
+  geom_vline(xintercept = tree_abundance, colour = red, linewidth = 0.9) +
+  facet_wrap(~design, nrow = 1) +
+  coord_cartesian(xlim = c(0, 1600)) +
+  labs(x = expression(hat(N)), y = "Number of surveys") + theme_sampling
+
+ggsave("figures/juniper/cluster-designs-fixedpop.pdf", cluster_map, width = 9, height = 3)
+ggsave("figures/juniper/cluster-histograms-fixedpop.pdf", cluster_hist, width = 9, height = 3)
+```
+<!-- Adapted from L01-Plot_Sampling_I.Rmd -->
+
+- introduce plot sampling
+    - what are the design considerations
+    - how are data collected
+    - what assumptions do we need to make
+
+- how to get from sample data to estimates of abundance
+    - sampling distributions and their properties
+    - estimators of abundance using probability models 
+    - how to quantify uncertainty associated with point estimates
+
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=0cm, yshift=-2.4cm] at (current page){
+\includegraphics[height=1.3in]{figures/goals2}};
+\end{tikzpicture}
+
+## Learning outcomes
+
+By the end of the lecture and practical, you should be able to:
+
+- Define a target population, survey region and suitable plot size.
+- Compare simple random, stratified random and systematic sampling designs.
+- Understand why complete detection is important for plot sampling.
+- Explain how sampling effort and spatial patterns affect bias and precision.
+- Understand the binomial model for animal counts$^*$.
+- Estimate abundance from plot counts, by hand and using R.
+- Understand how uncertainty in abundance estimates is communicated and calculated in R.
+
+## Why do we care how many there are?
+
+- abundance is the number of individuals in a population ($N$)
+- abundance is a key indicator of population status
+- however, in most cases it's \alert{impossible to count all animals}
+- lots of focus on estimating abundance in ecology
+- why do you think this is?
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=0cm, yshift=-2.5cm] at (current page){
+\includegraphics[height=1in]{figures/qm}};
+\end{tikzpicture}
+
+
+## Why do we care how many there are?
+
+- abundance is the number of individuals in a population ($N$)
+- abundance is a key indicator of population status
+- however, in most cases it's \alert{impossible to count all animals}
+- lots of focus on estimating abundance in ecology
+- abundance is critical for
+    - *eg*, determining conservation needs
+    - *eg*, defining management action
+    - $\ldots$ and lots more
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=-4cm, yshift=-2.5cm] at (current page){
+\includegraphics[height=1.3in]{figures/seber}};
+\node[xshift=-1.3cm, yshift=-2.5cm] at (current page){
+\includegraphics[height=1.3in]{figures/williamsetal}};
+\node[xshift=1.3cm, yshift=-2.5cm] at (current page){
+\includegraphics[height=1.3in]{figures/borchersetal}};
+\node[xshift=4cm, yshift=-2.5cm] at (current page){
+\includegraphics[height=1.3in]{figures/keryroyle}};
+\end{tikzpicture}
+
+
+# Plot sampling - basic ideas
+
+## How do we estimate how many there are?
+
+- define a survey region
+    - area that contains all members of an focal population
+    - closed to immigration and emigration
+
+```{r, echo=FALSE, message=FALSE, error=FALSE, warning=FALSE, results='hide'}
+
+# function copied from "oSCR" package, which is not on CRAN. 
+# copying here for ease of running. 
+e2dist <- function(x, y){
+  if (!is.matrix(x)) x <- as.matrix(x)
+  if (!is.matrix(y)) y <- as.matrix(y)
+  i <- sort(rep(1:nrow(y), nrow(x)))
+  dvec <- sqrt((x[, 1] - y[i, 1])^2 + (x[, 2] - y[i, 2])^2)
+  matrix(dvec, nrow = nrow(x), ncol = nrow(y), byrow = F)
+}
+  
+
+pdf(file="figures/region.pdf",width = 4, height = 4)
+par(oma=c(0,0,0,0),mar=c(1,1,1,1))
+plot(NULL, type="n",axes = FALSE, ann=FALSE, xlim=c(0,10),ylim=c(0,10))
+box(bty="o")
+dev.off()
+
+pdf(file="figures/region-with-points.pdf",width = 4, height = 4)
+par(oma=c(0,0,0,0),mar=c(1,1,1,1))
+plot(NULL, type="n",axes = FALSE, ann=FALSE, xlim=c(0,10),ylim=c(0,10))
+set.seed(1234)
+pts <- cbind(runif(125,0,10),runif(125,0,10))
+plots <- expand.grid(seq(2,8,length=3),seq(2,8,length=3))
+strips <- cbind(rep(seq(2,8,3),each=1000),rep(seq(0,10,length=1000),times=3))
+points(pts, pch=16, cex=1.3, col=bl)
+box(bty="o")
+dev.off()
+
+pdf(file="figures/region-with-plots.pdf",width = 4, height = 4)
+par(oma=c(0,0,0,0),mar=c(1,1,1,1))
+plot(NULL, type="n",axes = FALSE, ann=FALSE, xlim=c(0,10),ylim=c(0,10))
+clr <- ifelse(apply(e2dist(pts,plots),1,min)<0.75,bl,"grey")
+points(pts,pch=16, cex=1.3, col=clr)
+for(i in 1:nrow(plots)) draw.circle(x = plots[i,1],y = plots[i,2], radius = 0.75)
+points(plots, pch=3)
+box(bty="o")
+dev.off()
+
+pdf(file="figures/region-with-plots-with-samplesize.pdf",width = 4, height = 4)
+par(oma=c(0,0,0,0),mar=c(1,1,1,1))
+plot(NULL, type="n",axes = FALSE, ann=FALSE, xlim=c(0,10),ylim=c(0,10))
+clr <- ifelse(apply(e2dist(pts,plots),1,min)<0.75,bl,"grey")
+samplesizeP <- apply(e2dist(pts,plots)<0.75,2,sum)
+points(pts,pch=16, cex=1.3, col=clr)
+for(i in 1:nrow(plots)) draw.circle(x = plots[i,1],y = plots[i,2], radius = 0.75)
+points(plots, pch=paste(samplesizeP), cex=1.6)
+box(bty="o")
+dev.off()
+
+pdf(file="figures/region-with-strips.pdf",width = 4, height = 4)
+par(oma=c(0,0,0,0),mar=c(1,1,1,1))
+plot(NULL, type="n",axes = FALSE, ann=FALSE, xlim=c(0,10),ylim=c(0,10))
+clr <- ifelse(apply(e2dist(pts,strips),1,min)<0.5,bl,"grey")
+points(pts,pch=16, cex=1.3, col=clr)
+abline(v=c(unique(strips[,1])-0.5,unique(strips[,1])+0.5),lty=2)
+box(bty="o")
+dev.off()
+
+pdf(file="figures/region-with-strips-with-samplesize.pdf",width = 4, height = 4)
+par(oma=c(0,0,0,0),mar=c(1,1,1,1))
+plot(NULL, type="n",axes = FALSE, ann=FALSE, xlim=c(0,10),ylim=c(0,10))
+clr <- ifelse(apply(e2dist(pts,strips),1,min)<0.5,bl,"grey")
+samplesizeS <- c(sum(apply(e2dist(pts,strips[1:1000,])<0.5,1,sum)>0),
+                 sum(apply(e2dist(pts,strips[1001:2000,])<0.5,1,sum)>0),
+                 sum(apply(e2dist(pts,strips[2001:3000,])<0.5,1,sum)>0))
+points(pts,pch=16, cex=1.3, col=clr)
+abline(v=c(unique(strips[,1])-0.5,unique(strips[,1])+0.5),lty=2)
+text(x = c(unique(strips[,1])),y=rep(0.1,3),labels = paste(samplesizeS), cex=1.6)
+box(bty="o")
+dev.off()
+```
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=3.5cm, yshift=-2.5cm] at (current page){
+\includegraphics[height=1.7in]{figures/region}};
+\end{tikzpicture}
+
+
+## How do we estimate how many there are?
+
+- define a survey region
+    - area that contains all members of an focal population
+    - closed to immigration and emigration
+- simplest solution would be to perform a census
+    - count all the animals in the population
+    - not possible for many (most?) populations in the wild
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=3.5cm, yshift=-2.5cm] at (current page){
+\includegraphics[height=1.7in]{figures/region-with-points}};
+\end{tikzpicture}
+
+
+## How do we estimate how many there are?
+
+- define a survey region
+    - area that contains all members of an focal population
+    - closed to immigration and emigration
+- simplest solution would be to perform a census
+    - count all the animals in the population
+    - not possible for many (most?) populations in the wild
+- plot sampling is one simple solution
+    - sample a subset of the region
+    - extrapolate / scale up
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=3.5cm, yshift=-2.5cm] at (current page){
+\includegraphics[height=1.7in]{figures/region-with-plots}};
+\node[xshift=-1cm, yshift=-2.3cm] at (current page){This idea is the focus of};
+\node[xshift=-1cm, yshift=-2.7cm] at (current page){this lecture};
+\node[xshift=1cm, yshift=-2.5cm] at (current page){$\rightarrow$};
+\end{tikzpicture}
+
+
+## Plot sampling
+
+- sampling plots can be
+    - circular 
+    - strips (rectangular)
+    - $\ldots$ or any shape actually
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=3.8cm, yshift=1.3cm] at (current page){
+\includegraphics[height=1.4in]{figures/region-with-plots}};
+\node[xshift=3.8cm, yshift=-2.3cm] at (current page){
+\includegraphics[height=1.4in]{figures/region-with-strips}};
+\end{tikzpicture}
+
+## Plot sampling
+
+- sampling plots can be
+    - circular 
+    - strips (rectangular)
+- plots placed within the survey region 
+    - at random
+    - systematically with a random starting point
+    - this defines the **coverage**
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=3.8cm, yshift=1.3cm] at (current page){
+\includegraphics[height=1.4in]{figures/region-with-plots}};
+\node[xshift=3.8cm, yshift=-2.3cm] at (current page){
+\includegraphics[height=1.4in]{figures/region-with-strips}};
+\end{tikzpicture}
+
+## Plot sampling
+
+- sampling plots can be
+    - circular 
+    - strips (rectangular)
+- plots placed within the survey region 
+    - at random
+    - systematically with a random starting point
+    - this defines the **coverage**
+- generate data from plot sampling
+    - count the number of animals inside each plot
+    - this is the **sample** $(n)$
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=3.8cm, yshift=1.3cm] at (current page){
+\includegraphics[height=1.4in]{figures/region-with-plots-with-samplesize}};
+\node[xshift=3.8cm, yshift=-2.3cm] at (current page){
+\includegraphics[height=1.4in]{figures/region-with-strips-with-samplesize}};
+\end{tikzpicture}
+
+## Plot sampling
+
+- sampling plots can be
+    - circular 
+    - strips (rectangular)
+- plots placed within the survey region 
+    - at random
+    - systematically with a random starting point
+    - this defines the **coverage**
+- generate data from plot sampling
+    - count the number of animals inside each plot
+    - this is the **sample** $(n)$
+- objective: \alert{estimate how many in the region}
+    - we need to use statistics (an **estimator**)
+    - we need to estimate **abundance** $(\hat{N})$
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=3.8cm, yshift=1.3cm] at (current page){
+\includegraphics[height=1.4in]{figures/region-with-plots-with-samplesize}};
+\node[xshift=3.8cm, yshift=-2.3cm] at (current page){
+\includegraphics[height=1.4in]{figures/region-with-strips-with-samplesize}};
+\end{tikzpicture}
+
+## Plot sampling - an intuitive estimator
+
+An \alert{estimator} is a function that takes in data and outputs an estimate of the quantity of interest
+
+## Plot sampling - an intuitive estimator
+
+An \alert{estimator} is a function that takes in data and outputs an estimate of the quantity of interest
+
+- the quantity of interest is abundance $(N)$
+- the inputs for the plot sampling example are
+    - the number of things seen $(n)$
+    - the area covered by the plots $(a)$
+    - the total area of the region of interest $(A)$
+    - from this we calculate the *proportion* of the region surveyed $\big(p_c=\frac{a}{A}\big)$
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=0cm, yshift=-2.7cm] at (current page){
+\includegraphics[height=1.5in]{figures/region-with-plots}};
+\end{tikzpicture}
+
+
+## Plot sampling - an intuitive estimator
+
+An \alert{estimator} is a function that takes in data and outputs an estimate of the quantity of interest
+
+- the quantity of interest is abundance $(N)$
+- the inputs for the plot sampling example are
+    - the number of things seen $(n)$
+    - the area covered by the plots $(a)$
+    - the total area of the region of interest $(A)$
+    - also the *proportion* of the region surveyed $\big(p_c=\frac{a}{A}\big)$
+
+
+Assuming plot densities are **representative of density in the whole region**, an estimate of abundance can be generated as a function of the data:
+
+$$\hat{N} = \frac{n}{a}A$$
+
+## Plot sampling - an intuitive estimator
+
+An \alert{estimator} is a function that takes in data and outputs an estimate of the quantity of interest
+
+- the quantity of interest is abundance $(N)$
+- the inputs for the plot sampling example are
+    - the number of things seen $(n)$
+    - the area covered by the plots $(a)$
+    - the total area of the region of interest $(A)$
+    - also the *proportion* of the region surveyed $\big(p_c=\frac{a}{A}\big)$
+
+
+Assuming plot densities are **representative of density in the whole region**, an estimate of abundance can be generated as a function of the data:
+
+$$\hat{N}(n) = {\frac{n}{a}A =} \frac{n}{\frac{a}{A}}$$
+
+## Plot sampling - an intuitive estimator
+
+An \alert{estimator} is a function that takes in data and outputs an estimate of the quantity of interest
+
+- the quantity of interest is abundance $(N)$
+- the inputs for the plot sampling example are
+    - the number of things seen $(n)$
+    - the area covered by the plots $(a)$
+    - the total area of the region of interest $(A)$
+    - also the *proportion* of the region surveyed $\big(p_c=\frac{a}{A}\big)$
+
+
+Assuming plot densities are **representative of density in the whole region**, an estimate of abundance can be generated as a function of the data:
+
+$$\hat{N}(n) = {\frac{n}{a}A =} {\frac{n}{\frac{a}{A}}} = \frac{n}{p_c}$$
+
+# Example 1: How many juniper trees?
+
+## How many juniper trees?
+
+**Ecological problem**: Juniper woodland is an important mountain ecosystem in Kyrgyzstan. Managers need effective monitoring strategies to estimate the number of trees and detect changes in abundance.
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=-3.35cm, yshift=-1.25cm] at (current page){
+\includegraphics[height=1.25in]{figures/juniper/juniper1_rahmonov.png}};
+\node[xshift=-0cm, yshift=-1.25cm] at (current page){
+\includegraphics[height=1.25in]{figures/juniper/juniper3_rahmonov.png}};
+\node[xshift=3.35cm, yshift=-1.25cm] at (current page){
+\includegraphics[height=1.25in]{figures/juniper/juniper2_rahmonov.png}};
+\node[xshift=0cm, yshift=-3.85cm] at (current page){
+\scriptsize All images by O. Rahmonov (Rahmonov et al., Environ Earth Sci (2017) 76:324)};
+\end{tikzpicture}
+
+## How many juniper trees?
+
+**Ecological problem**: Juniper woodland is an important mountain ecosystem in Kyrgyzstan. Managers need effective monitoring strategies to estimate the number of trees and detect changes in abundance.
+
+\vspace{0.5cm}
+
+**Sampling problem**: How can you count *all* the juniper trees when they are spread across a large, mountainous area, and survey teams have limited time and resources?
+
+## How many juniper trees?
+
+**Ecological problem**: Juniper woodland is an important mountain ecosystem in Kyrgyzstan. Managers need effective monitoring strategies to estimate the number of trees and detect changes in abundance.
+
+\vspace{0.35cm}
+
+**Sampling problem**: How can you count *all* the juniper trees when they are spread across a large, mountainous area, and survey teams have limited time and resources?
+
+\vspace{0.35cm}
+
+**Sampling solution**: Sample a representative portion of the area and use the observed density to estimate abundance $\rightarrow$ plot sampling!
+
+## Two ways to sample juniper trees
+
+The survey region is 10 km by 10 km, so its total area is
+
+$$A = 100\ \text{km}^2.$$
+
+We compare two sampling designs:
+
+- nine **circular plots**, each with radius 0.75 km
+- three **strip transects**, each 1 km wide and 10 km long
+
+We count every juniper tree inside each sampled plot.
+
+## Sampling with circular plots
+
+Summary of the sampling:
+
+- number of plots: $9$
+- radius of each plot: $r = 0.75$ km
+- juniper trees observed: $n = 20$
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=3.15cm, yshift=-1.75cm] at (current page){
+\includegraphics[height=2.35in]{figures/region-with-plots-with-samplesize}};
+\end{tikzpicture}
+
+
+## Calculating the area covered by one circular plot
+
+- Input data:
+  - Number of plots: $n = 9$
+  - Radius of each plot: $r = 0.75$ km
+  - Value of $\pi = 3.1416$
+
+\vspace{0.25cm}
+
+- The area of a circle is $S = \pi r^2$
+
+\vspace{0.25cm}
+
+- Squaring the radius: $r^2 = (0.75)^2= 0,75\times 0.75= 0.5625$
+
+\vspace{0.25cm}
+
+- Substituting into the area formula:
+$$
+S = 3.1416 \times 0.5625 = 1.76715 \text{ km}^2
+$$
+
+- This is the area of one circular plot.
+
+## Sampling with circular plots
+
+The total area covered by the nine circular plots is
+
+$$a = 9\pi r^2 = 9\pi(0.75)^2 \approx 15.90\ \text{km}^2.$$
+
+The proportion of the region covered is
+
+$$p_c = \frac{a}{A} = \frac{15.90}{100} \approx 0.159.$$
+
+Assuming tree density in the plots is representative of the region:
+
+$$\hat{N} = \frac{n}{p_c} = \frac{20}{0.159} \approx \alert{126\ \text{juniper trees}}.$$
+
+## Sampling with strip transects
+
+Summary of the sampling:
+
+- number of strips: $3$
+- dimensions of each strip: 1 km by 10 km
+- juniper trees observed: $n = 17 + 16 + 10 = 43$
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=3.15cm, yshift=-1.75cm] at (current page){
+\includegraphics[height=2.35in]{figures/region-with-strips-with-samplesize}};
+\end{tikzpicture}
+
+## Sampling with strip transects
+
+The total area covered by the three strips is
+
+$$a = 3(1 \times 10) = 30\ \text{km}^2.$$
+
+The proportion of the region covered is
+
+$$p_c = \frac{a}{A} = \frac{30}{100} = 0.30.$$
+
+Assuming tree density in the strips is representative of the region:
+
+$$\hat{N} = \frac{n}{p_c} = \frac{43}{0.30} \approx \alert{143\ \text{juniper trees}}.$$
+
+## How many juniper trees?
+
+The simulated survey region contains **125 juniper trees**.
+
+\vspace{0.4cm}
+
+| Sampling method | Area sampled | Trees counted | Estimated abundance |
+|:--|--:|--:|--:|
+| Circular plots | 15.90 km$^2$ | 20 | $\hat{N} \approx 126$ |
+| Strip transects | 30.00 km$^2$ | 43 | $\hat{N} \approx 143$ |
+
+\vspace{0.4cm}
+
+- the two samples give different estimates, even though they survey the same population
+- a representative sample can give an estimate close to the true abundance
+- larger coverage does not guarantee the closest estimate in one survey
+
+## What assumptions did we make?
+
+For either estimate to be reliable:
+
+1. plots or strips are placed so that sampled density is representative of the whole region
+2. every juniper tree inside a sampled area is detected and counted once
+3. sampled areas do not overlap
+4. the area of each plot and the total survey region are known
+
+\vspace{0.4cm}
+
+- \alert{but is this estimator any good}?
+
+\vspace{0.4cm}
+
+If trees are strongly clustered, or sampling avoids steep and inaccessible ground, what could happen to $\hat{N}$?
+
+# What makes an estimator "good"?
+
+## Is the estimator any good?
+
+Estimators are judged on performance **on average**. Imagine we could repeat a survey again & again record the estimate each time.
+
+## Is the estimator any good?
+
+Estimators are judged on performance **on average**. Imagine we could repeat a survey again & again record the estimate each time.
+
+- repeating 100000 times would generate the histogram
+- repeating an infinite number times would generate the line
+- this is the \alert{sampling distribution}
+- describes what we expect if we did the survey again.
+
+```{r, echo=FALSE, results='hide', message=FALSE, error=FALSE}
+set.seed(2510)
+nsamp <- rbinom(100000, 125, 0.159)
+Nhat <- nsamp/0.159
+Ndens <- density(Nhat,bw=8)
+
+pdf(file="figures/sampdist-hist.pdf",width = 5.5, height = 4)
+par(oma=c(0,0,0,0),mar=c(4,6,1,1))
+hist(Nhat, probability = TRUE, col=adjustcolor(grn,0.2), breaks = seq(-0.5,125.5,1)/0.159,
+     xlim=c(25,250), main="", las=1, ylab="",ylim=c(0,0.025), 
+     xlab="Estimated abundance")
+mtext(text = "Probability density", side = 2,line = 4.5)
+lines(Ndens,lwd=3, col=bl)
+box(bty="o")
+dev.off()
+
+# Illustrate bias by adding 25 trees to the same survey estimator.
+Ndens <- density(Nhat + 25,bw=8)
+sampling_mean <- mean(Nhat) + 25
+
+pdf(file="figures/sampdist-dens-annotated.pdf",width = 5.5, height = 4)
+par(oma=c(0,0,0,0),mar=c(4,6,1,1))
+plot(Ndens,lwd=3, col=bl,xlim=c(25,250), main="", las=1, ylab="", 
+     xlab="Estimated abundance", ylim=c(0,0.018))
+polygon(x = c(Ndens$x,rev(Ndens$x)), y = c(Ndens$y,rep(0,length(Ndens$y))),
+        border = bl,col = adjustcolor(col = bl,alpha.f = 0.1))
+mtext(text = "Probability density", side = 2,line = 4.5)
+arrows(x0 = sampling_mean,y0 = 0,
+       x1 = sampling_mean,y1 = approx(Ndens$x, Ndens$y, sampling_mean)$y,
+       length = 0, lwd=2)
+arrows(x0 = 125,y0 = 0,
+       x1 = 125,y1 = Ndens$y[which.min(abs(125-Ndens$x))],
+       length = 0, lwd=2, lty=2)
+arrows(x0 = sampling_mean, y0 = 0.008, x1 = 125, y1 = 0.008,
+       code = 3, length = 0.1, lwd=2, col=rd)
+arrows(x0 = 65, y0 = 0.002,
+       x1 = 235, y1 = 0.002,
+       code = 3, length = 0.1, lwd=2, col=rd)
+text(x = 105, y = 0.008, labels = "Bias", cex=1.2, col=rd)
+text(x = 95, y = 0.003, labels = "Variance", cex=1.2, col=rd)
+legend("topleft", bty = "n", lty=c(1,2), lwd=2, legend = c("Mean of sampling distribution", "Truth"),cex = 1)
+box(bty="o")
+dev.off()
+```
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=0cm, yshift=-2.2cm] at (current page){
+\includegraphics[height=1.75in]{figures/sampdist-hist}};
+\end{tikzpicture}
+
+## Is the estimator any good?
+
+Estimators are judged on performance **on average**. Imagine we could repeat a survey again & again record the estimate each time.
+
+- *we can't do this of course, but helps conceptually*
+- we will see how to get the sampling distribution in the next lecture
+- for now lets assume we can repeat many times
+- for now lets assume we also know the true abundance, $N$
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=0cm, yshift=-2.2cm] at (current page){
+\includegraphics[height=1.75in]{figures/sampdist-hist}};
+\end{tikzpicture}
+
+## Is the estimator any good?
+
+Properties of an estimator are derived from the sampling distribution
+
+- suppose we know the sampling distribution and the true value $(N)$
+- two properties of interest are:
+    - bias
+    - variance
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=0cm, yshift=-2.2cm] at (current page){
+\includegraphics[height=1.75in]{figures/sampdist-dens-annotated}};
+\end{tikzpicture}
+
+
+## Estimator properties - Bias
+
+- how close do the estimates get to the truth on average?
+    - we call this the \alert{bias}
+    - we want this to be 0 (ie, unbiased)  
+
+\vspace{-0.2cm}
+$$\text{Bias}\big(\hat{N}\big)=\mathbb{E}\big(\hat{N}\big) - N$$
+
+```{r, echo=FALSE, results='hide', message=FALSE, error=FALSE}
+set.seed(2510)
+xy_bias_lowvar <- cbind(rnorm(15,-1.5,0.25),
+                        rnorm(15,-1.5,0.25))
+xy_nobias_lowvar <- cbind(rnorm(15,0,0.25),
+                          rnorm(15,0,0.25))
+xy_bias_hivar <- cbind(rnorm(15,-1.5,0.75),
+                       rnorm(15,-1.5,0.75))
+xy_nobias_hivar <- cbind(rnorm(15,0,0.75),
+                         rnorm(15,0,0.75))
+
+
+pdf(file="figures/target-bias.pdf",width = 8, height = 4)
+par(mfrow=c(1,2),oma=c(0,0,0,0),mar=c(1,1,3,1))
+plot(0,0,xlim=c(-4,4),ylim=c(-4,4), main = "Low bias",
+     bty="n", xlab="",ylab="", type="n",
+     xaxt="n",yaxt="n")
+draw.circle(x = 0,y = 0,radius = 3.5)
+draw.circle(x = 0,y = 0,radius = 2.5, col = adjustcolor(grn,0.2))
+draw.circle(x = 0,y = 0,radius = 1.5, col="white")
+draw.circle(x = 0,y = 0,radius = 0.5, col = adjustcolor(grn,0.2))
+points(xy_nobias_lowvar, col=rd, cex=1.2, pch=16)
+
+plot(0,0,xlim=c(-4,4),ylim=c(-4,4), main="High bias",
+     bty="n", xlab="",ylab="", type="n",
+     xaxt="n",yaxt="n")
+draw.circle(x = 0,y = 0,radius = 3.5)
+draw.circle(x = 0,y = 0,radius = 2.5, col = adjustcolor(grn,0.2))
+draw.circle(x = 0,y = 0,radius = 1.5, col="white")
+draw.circle(x = 0,y = 0,radius = 0.5, col = adjustcolor(grn,0.2))
+points(xy_bias_lowvar, col=rd, cex=1.2, pch=16)
+dev.off()
+
+pdf(file="figures/target-var.pdf",width = 8, height = 4)
+par(mfrow=c(1,2),oma=c(0,0,0,0),mar=c(1,1,3,1))
+plot(0,0,xlim=c(-4,4),ylim=c(-4,4),main="Low variance",
+     bty="n", xlab="",ylab="", type="n",
+     xaxt="n",yaxt="n")
+draw.circle(x = 0,y = 0,radius = 3.5)
+draw.circle(x = 0,y = 0,radius = 2.5, col = adjustcolor(grn,0.2))
+draw.circle(x = 0,y = 0,radius = 1.5, col="white")
+draw.circle(x = 0,y = 0,radius = 0.5, col = adjustcolor(grn,0.2))
+points(xy_nobias_lowvar, col=rd, cex=1.2, pch=16)
+
+plot(0,0,xlim=c(-4,4),ylim=c(-4,4),main="High variance",
+     bty="n", xlab="",ylab="", type="n",
+     xaxt="n",yaxt="n")
+draw.circle(x = 0,y = 0,radius = 3.5)
+draw.circle(x = 0,y = 0,radius = 2.5, col = adjustcolor(grn,0.2))
+draw.circle(x = 0,y = 0,radius = 1.5, col="white")
+draw.circle(x = 0,y = 0,radius = 0.5, col = adjustcolor(grn,0.2))
+points(xy_nobias_hivar, col=rd, cex=1.2, pch=16)
+dev.off()
+
+pdf(file="figures/target-prec.pdf",width = 8, height = 4)
+par(mfrow=c(1,2),oma=c(0,0,0,0),mar=c(1,1,3,1))
+plot(0,0,xlim=c(-4,4),ylim=c(-4,4),main="High precision",
+     bty="n", xlab="",ylab="", type="n",
+     xaxt="n",yaxt="n")
+draw.circle(x = 0,y = 0,radius = 3.5)
+draw.circle(x = 0,y = 0,radius = 2.5, col = adjustcolor(grn,0.2))
+draw.circle(x = 0,y = 0,radius = 1.5, col="white")
+draw.circle(x = 0,y = 0,radius = 0.5, col = adjustcolor(grn,0.2))
+points(xy_nobias_lowvar, col=rd, cex=1.2, pch=16)
+
+plot(0,0,xlim=c(-4,4),ylim=c(-4,4),main="Low precision",
+     bty="n", xlab="",ylab="", type="n",
+     xaxt="n",yaxt="n")
+draw.circle(x = 0,y = 0,radius = 3.5)
+draw.circle(x = 0,y = 0,radius = 2.5, col = adjustcolor(grn,0.2))
+draw.circle(x = 0,y = 0,radius = 1.5, col="white")
+draw.circle(x = 0,y = 0,radius = 0.5, col = adjustcolor(grn,0.2))
+points(xy_nobias_hivar, col=rd, cex=1.2, pch=16)
+dev.off()
+
+pdf(file="figures/target-quad.pdf",width = 8, height = 8)
+par(mfrow=c(2,2),oma=c(0,3.5,1.5,0),mar=c(0,0,0,0))
+plot(0,0,xlim=c(-3.6,3.6),ylim=c(-4,4), main = "",
+     bty="n", xlab="",ylab="", type="n",
+     xaxt="n",yaxt="n")
+draw.circle(x = 0,y = 0,radius = 3.5)
+draw.circle(x = 0,y = 0,radius = 2.5, col = adjustcolor(grn,0.2))
+draw.circle(x = 0,y = 0,radius = 1.5, col="white")
+draw.circle(x = 0,y = 0,radius = 0.5, col = adjustcolor(grn,0.2))
+points(xy_nobias_lowvar, col=rd, cex=1.2, pch=16)
+mtext(text = "Low bias", side = 3,line = 0,cex = 1.5, font = 2)
+mtext(text = "High precision", side = 2,line = 2,cex = 1.5, font = 2)
+mtext(text = "(Low variance)", side = 2,line = 0,cex = 1.5, font = 2)
+
+plot(0,0,xlim=c(-3.6,3.6),ylim=c(-4,4), main="",
+     bty="n", xlab="",ylab="", type="n",
+     xaxt="n",yaxt="n")
+draw.circle(x = 0,y = 0,radius = 3.5)
+draw.circle(x = 0,y = 0,radius = 2.5, col = adjustcolor(grn,0.2))
+draw.circle(x = 0,y = 0,radius = 1.5, col="white")
+draw.circle(x = 0,y = 0,radius = 0.5, col = adjustcolor(grn,0.2))
+points(xy_bias_lowvar, col=rd, cex=1.2, pch=16)
+mtext(text = "High bias", side = 3,line = 0, cex=1.5, font=2)
+
+
+plot(0,0,xlim=c(-3.6,3.6),ylim=c(-4,4),main="",
+     bty="n", xlab="",ylab="", type="n",
+     xaxt="n",yaxt="n")
+draw.circle(x = 0,y = 0,radius = 3.5)
+draw.circle(x = 0,y = 0,radius = 2.5, col = adjustcolor(grn,0.2))
+draw.circle(x = 0,y = 0,radius = 1.5, col="white")
+draw.circle(x = 0,y = 0,radius = 0.5, col = adjustcolor(grn,0.2))
+points(xy_nobias_hivar, col=rd, cex=1.2, pch=16)
+mtext(text = "Low precision", side = 2,line = 2,cex = 1.5, font = 2)
+mtext(text = "(High varianc)", side = 2,line = 0,cex = 1.5, font = 2)
+
+plot(0,0,xlim=c(-3.6,3.6),ylim=c(-4,4),main="",
+     bty="n", xlab="",ylab="", type="n",
+     xaxt="n",yaxt="n")
+draw.circle(x = 0,y = 0,radius = 3.5)
+draw.circle(x = 0,y = 0,radius = 2.5, col = adjustcolor(grn,0.2))
+draw.circle(x = 0,y = 0,radius = 1.5, col="white")
+draw.circle(x = 0,y = 0,radius = 0.5, col = adjustcolor(grn,0.2))
+points(xy_bias_hivar, col=rd, cex=1.5, pch=16)
+dev.off()
+
+pdf(file="figures/dens-quad.pdf",width = 8, height = 8)
+par(mfrow=c(2,2),oma=c(0,3.5,1.5,0),mar=c(4,2,2,2))
+plot(seq(5,245,2),dnorm(seq(5,245,2),125,10), main = "",
+     bty="n", xlab="",ylab="", type="l",ylim=c(0.0025,max(dnorm(seq(5,245,2),125,10))+0.015),
+     xaxt="n",yaxt="n", lwd=3, col=bl)
+axis(1,at = c(-1000,1000),line = 1)
+arrows(x0 = 125, y0 = 0, x1 = 125, 
+       y1 = dnorm(seq(5,245,2),125,10)[which.min(abs(seq(5,245,2)-125))],
+       length = 0,lwd=3, col=rd)
+arrows(x0 = 125, y0 = 0, x1 = 125, 
+       y1 = max(dnorm(seq(5,245,2),125,10)),
+       length = 0,lwd=3, col=bl)
+mtext(text = "Low bias", side = 3,line = 0,cex = 1.5, font = 2)
+mtext(text = "High precision", side = 2,line = 2,cex = 1.5, font = 2)
+mtext(text = "(Low variance)", side = 2,line = 0,cex = 1.5, font = 2)
+mtext(text = "True N", side = 1,line = 1.5,cex = 1, font = 1, col=rd, at = 125)
+
+plot(seq(5,245,2),dnorm(seq(5,245,2),165,10), main = "",
+     bty="n", xlab="",ylab="", type="l",ylim=c(0.0025,max(dnorm(seq(5,245,2),165,10))+0.015),
+     xaxt="n",yaxt="n", lwd=3, col=bl)
+axis(1,at = c(-1000,1000),line = 1)
+arrows(x0 = 125, y0 = 0, x1 = 125, 
+       y1 = dnorm(seq(5,245,2),125,10)[which.min(abs(seq(5,245,2)-125))],
+       length = 0,lwd=3, col=rd)
+arrows(x0 = 165, y0 = 0, x1 = 165, 
+       y1 = max(dnorm(seq(5,245,2),165,10)),
+       length = 0,lwd=3, col=bl)
+mtext(text = "High bias", side = 3,line = 0, cex=1.5, font=2)
+mtext(text = "True N", side = 1,line = 1.5,cex = 1, font = 1, col=rd, at = 125)
+
+
+plot(seq(5,245,2),dnorm(seq(5,245,2),125,30), main = "",
+     bty="n", xlab="",ylab="", type="l",ylim=c(0.001,max(dnorm(seq(5,245,2),125,30))+0.015),
+     xaxt="n",yaxt="n", lwd=3, col=bl)
+axis(1,at = c(-1000,1000),line = 1)
+arrows(x0 = 125, y0 = 0, x1 = 125, 
+       y1 = dnorm(seq(5,245,2),125,30)[which.min(abs(seq(5,245,2)-125))],
+       length = 0,lwd=3, col=rd)
+arrows(x0 = 125, y0 = 0, x1 = 125, 
+       y1 = max(dnorm(seq(5,245,2),125,30)),
+       length = 0,lwd=3, col=bl)
+mtext(text = "Low precision", side = 2,line = 2,cex = 1.5, font = 2)
+mtext(text = "(High varianc)", side = 2,line = 0,cex = 1.5, font = 2)
+mtext(text = "True N", side = 1,line = 1.5,cex = 1, font = 1, col=rd, at = 125)
+
+plot(seq(5,245,2),dnorm(seq(5,245,2),165,30), main = "",
+     bty="n", xlab="",ylab="", type="l",ylim=c(0.001,max(dnorm(seq(5,245,2),165,30))+0.015),
+     xaxt="n",yaxt="n", lwd=3, col=bl)
+axis(1,at = c(-1000,1000),line = 1)
+arrows(x0 = 125, y0 = 0, x1 = 125, 
+       y1 = dnorm(seq(5,245,2),125,30)[which.min(abs(seq(5,245,2)-125))],
+       length = 0,lwd=3, col=rd)
+arrows(x0 = 165, y0 = 0, x1 = 165, 
+       y1 = max(dnorm(seq(5,245,2),165,30)),
+       length = 0,lwd=3, col=bl)
+mtext(text = "True N", side = 1,line = 1.5,cex = 1, font = 1, col=rd, at = 125)
+dev.off()
+```
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=0cm, yshift=-2cm] at (current page){
+\fbox{\includegraphics[height=1.6in]{figures/target-bias}}};
+\end{tikzpicture}
+
+## Estimator properties - Variance and precision
+
+- how variable are the estimates from one survey to the next?
+    - we call this the \alert{variance}
+    - want low variance
+
+\vspace{-0.2cm} 
+$$\text{Var}\big(\hat{N}\big)$$
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=0cm, yshift=-2cm] at (current page){
+\fbox{\includegraphics[height=1.6in]{figures/target-var}}};
+\end{tikzpicture}
+
+## Estimator properties - Variance and precision
+
+- how variable are the estimates from one survey to the next?
+    - alternatively the \alert{precision}
+    - want high precision
+
+\vspace{-0.2cm}
+$$\text{Precision}\big(\hat{N}\big)=\frac{1}{\text{Var}\big(\hat{N}\big)}$$
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=0cm, yshift=-2cm] at (current page){
+\fbox{\includegraphics[height=1.6in]{figures/target-prec}}};
+\end{tikzpicture}
+
+## Estimator properties
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=0cm, yshift=-0.8cm] at (current page){
+\fbox{\includegraphics[height=2.5in]{figures/target-quad}}};
+\node[xshift=0cm, yshift=3.0cm] at (current page){\Large{\textbf{Bias}}};
+\node[xshift=-4.4cm, yshift=-0.8cm] at (current page){\Large{\textbf{Precision}}};
+\end{tikzpicture}
+
+## Estimator properties
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=0cm, yshift=-0.8cm] at (current page){
+\fbox{\includegraphics[height=2.5in]{figures/dens-quad}}};
+\node[xshift=0cm, yshift=3.0cm] at (current page){\Large{\textbf{Bias}}};
+\node[xshift=-4.4cm, yshift=-0.8cm] at (current page){\Large{\textbf{Precision}}};
+\end{tikzpicture}
+
+## Estimator properties
+
+Ideally, estimator has no bias and the smallest variance possible
+
+- Low bias is good:
+    - estimates equal to the true value on average
+    - if variance is high, any single estimate may still be far from truth
+
+- Low variance / high precision is good 
+    - estimates close to what it would be on average
+    - if bias is high, a single estimate will likely be far from truth
+
+- Often a trade-off between estimator bias and variance
+    - low bias achieved by providing estimates with greater spread (more variance)
+    - lower variance constrain estimates too much and cause greater bias
+    - must look for a compromise between these two key properties
+    
+## Estimator properties - consistency
+
+Estimator consistency is a desirable property: sampling distribution steadily \alert{shrinks towards the true value} as more data are collected.
+
+- concerns bias & precision
+- as sample size increases
+    - variance decreases
+    - sampling distribution shrinks toward the truth
+    - any single estimate will have smaller bias (although average bias of the distribution does not change)
+- estimate will be
+    - *imprecise* if only bias shrinks
+    - *inaccurate* if only variance shrinks
+
+```{r, echo=FALSE, results='hide', message=FALSE, error=FALSE}
+set.seed(123)
+pdf(file="figures/consistency.pdf",width = 3, height = 5)
+par(oma=c(0,0,0,0),mar=c(3,3,1,1),mfrow=c(3,1))
+consistencyLow <- rbinom(100000, 125, 0.2)/0.2 
+consistencyMed <- rbinom(100000, 125, 0.5)/0.5 
+consistencyHigh <- rbinom(100000, 125, 0.7)/0.7 
+maxy <- 0.065
+hist(consistencyHigh, probability = TRUE, col=adjustcolor(bl,0.4),
+     breaks = seq(-0.5,125.5,1)/0.7,
+     xlim=c(50,200), ylim = c(0,maxy), axes = FALSE, border = FALSE,
+     main="", las=1, ylab="",xlab="Estimated abundance")
+abline(v=125, lwd=3, col=rd)
+abline(v=mean(consistencyHigh), lwd=2, col=bl)
+axis(1,at=seq(50,200,25),labels = NA)
+axis(2,at=maxy/2,labels = expression("p"[c]*" = 0.7"), cex.axis=1.5, las=2, 
+     tick = FALSE, line = -3)
+
+hist(consistencyMed, probability = TRUE, col=adjustcolor(bl,0.4),
+     breaks = seq(-0.5,125.5,1)/0.5,
+     xlim=c(50,200), ylim = c(0,maxy), axes = FALSE, border = FALSE,
+     main="", las=1, ylab="",xlab="Estimated abundance")
+abline(v=125, lwd=3, col=rd)
+abline(v=mean(consistencyMed), lwd=2, col=bl)
+axis(1,at=seq(50,200,25),labels = NA)
+axis(2,at=maxy/2,labels = expression("p"[c]*" = 0.5"), cex.axis=1.5, las=2,
+     tick = FALSE, line = -3)
+
+hist(consistencyLow, probability = TRUE, col=adjustcolor(bl,0.4),
+     breaks = seq(-0.5,125.5,1)/0.2,
+     xlim=c(50,200), ylim = c(0,maxy), axes = FALSE, border = FALSE,
+     main="", las=1, ylab="",xlab="Estimated abundance")
+abline(v=125, lwd=3, col=rd)
+abline(v=mean(consistencyLow), lwd=2, col=bl)
+axis(1,at=seq(50,200,25))
+axis(2,at=maxy/2,labels = expression("p"[c]*" = 0.2"), cex.axis=1.5, las=2, 
+     tick = FALSE, line = -3)
+dev.off()
+```
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=4cm, yshift=-1.0cm] at (current page){
+\includegraphics[height=2.5in]{figures/consistency}};
+\end{tikzpicture}
+
+# Example 3: Sampling coverage
+
+## Does increasing coverage improve the estimate?
+
+**Sampling question**: What happens to estimator variance when we increase the number of circular plots?
+
+\vspace{0.4cm}
+
+We use a larger survey region containing **500 uniformly distributed juniper trees**:
+
+- region: 20 km by 20 km, so $A = 400$ km$^2$
+- plot radius: $r = 1$ km
+- sampling effort: 9, 16, or 25 non-overlapping plots
+- the same population is sampled by all three designs in each replicate
+
+## Increasing the number of plots
+
+\begin{center}
+\includegraphics[width=0.98\textwidth]{figures/juniper/coverage-designs-fixedpop.pdf}
+\end{center}
+
+Grey trees are outside the plots; blue trees are sampled.
+
+## Increasing the number of plots
+
+The area sampled and proportional coverage increase with effort:
+
+| Number of plots | Area sampled, $a$ | Coverage, $p_c=a/A$ |
+|--:|--:|--:|
+| 9  | $9\pi(1)^2=28.27$ km$^2$ | 0.071 |
+| 16 | $16\pi(1)^2=50.27$ km$^2$ | 0.126 |
+| 25 | $25\pi(1)^2=78.54$ km$^2$ | 0.196 |
+
+For every survey we estimate abundance using
+
+$$\hat N=\frac{n}{p_c}.$$
+
+## Increasing coverage reduces estimator variance
+
+\begin{center}
+\includegraphics[width=0.98\textwidth]{figures/juniper/coverage-histograms-fixedpop.pdf}
+\end{center}
+
+The population is held fixed while the systematic grid origin varies. The red line is the true abundance, $N=500$.
+
+## Increasing coverage reduces estimator variance
+
+Results from 2,000 repeated surveys:
+
+```{r coverage-table, echo=FALSE, results='asis'}
+knitr::kable(effort_summary, digits = c(NA, 1, 0),
+             col.names = c("Sampling effort", "Mean estimate", "Variance"))
+```
+
+\vspace{0.3cm}
+
+- all three estimators are centred close to the true abundance
+- with more plots, more trees are counted in each survey
+- the sampling distribution becomes narrower: **increasing coverage reduces variance**
+
+# Example 4: Spatial variation in density
+
+## When density varies across the region
+
+Juniper density may vary with elevation, slope, soils, or human disturbance.
+
+Here density increases from west to east:
+
+$$\lambda(x) \propto x^2.$$
+
+The fixed population contains **500 trees**, but many more occur in the eastern part of the region.
+
+## Four sampling designs
+
+We compare nine non-overlapping circular plots placed:
+
+1. **systematically** across the whole region in a 3x3 grid
+2. **at random**, with a new arrangement for every survey
+3. **stratified random**: four in the west, five in the east
+4. **preferentially**, using a 3x3 grid in the high-density east
+
+\begin{center}
+\includegraphics[width=0.98\textwidth]{figures/juniper/gradient-designs-fixedpop.pdf}
+\end{center}
+
+All designs use the same effort and the same estimator, $\hat N=n/p_c$. Stratified sampling calculates $\hat N=n/p_c$ in each stratum and sums these.
+
+## Systematic sampling represents the region
+
+\begin{center}
+\includegraphics[width=0.98\textwidth]{figures/juniper/gradient-histograms-fixedpop.pdf}
+\end{center}
+
+The population is held fixed while survey locations vary. The red line is the true abundance, $N=500$.
+
+## Systematic sampling represents the region
+
+Results from 2,000 repeated surveys:
+
+```{r gradient-table, echo=FALSE, results='asis'}
+knitr::kable(gradient_summary, digits = c(NA, 1, 0),
+             col.names = c("Sampling design", "Mean estimate", "Variance"))
+```
+
+\vspace{0.3cm}
+
+- systematic plots spread effort across the full density gradient
+- random plots can concentrate in low- or high-density areas
+- stratification samples both halves; weight their counts separately
+- eastern-biased plots consistently sample high density and overestimate abundance
+
+# Example 5: Clustered trees
+
+## When juniper trees are clustered
+
+Junipers may occur in patches because suitable microsites are patchy and dispersal is local.
+
+\begin{center}
+\includegraphics[width=0.98\textwidth]{figures/juniper/cluster-designs-fixedpop.pdf}
+\end{center}
+
+Here clustering is strong enough that a plot can contain many trees or fall between clusters and contain none.
+
+Compare the same four designs, including **four random plots west and five east**. For stratification, again add the two estimated half-region totals.
+
+## Clustered populations increase uncertainty
+
+\begin{center}
+\includegraphics[width=0.98\textwidth]{figures/juniper/cluster-histograms-fixedpop.pdf}
+\end{center}
+
+The population is held fixed while survey locations vary. The red line is the true abundance, $N=500$.
+
+## Clustered populations increase uncertainty
+
+Results from 2,000 repeated surveys:
+
+```{r cluster-table, echo=FALSE, results='asis'}
+knitr::kable(cluster_summary, digits = c(NA, 1, 0),
+             col.names = c("Sampling design", "Mean estimate", "Variance"))
+```
+
+\vspace{0.3cm}
+
+- clustering can produce highly variable counts under all four designs
+- systematic plots spread effort; stratification samples both halves
+- preferential placement is not representative and can be biased in either direction
+
+
+# A probability model for count data$^*$
+
+## How do we find the sampling distribution?
+
+Clearly knowing the sampling distribution is an important aspect of determining the performance of an estimator. But, we cant repeat our survey many times. So how do we find it?
+
+- need a probability model for the data generating process
+- a model that encodes how we assume the data came about
+- connects true abundance and the survey data
+- can then deduce estimator performance
+- can also use the probability model to construct estimators
+
+## The binomial model for counts
+
+A binomial model counts the number of successes in a fixed number of independent trials.
+
+**Example 1:** Flip a fair coin 3 times. What is the probability of getting 2 heads?
+
+- $N=3$ trials; a head is a “success”
+- Each flip has $p=0.5$ for heads and $1-p=0.5$ for tails
+
+\begin{center}
+\footnotesize
+\renewcommand{\arraystretch}{1.1}
+\begin{tabular}{ccc}
+\textbf{Sequence} & \textbf{Multiply the flip probabilities} & \textbf{Probability} \\
+HHH & $0.5 \times 0.5 \times 0.5$ & $0.125$ \\
+\textcolor{red}{HHT} & \textcolor{red}{$0.5 \times 0.5 \times 0.5$} & \textcolor{red}{$0.125$} \\
+\textcolor{red}{HTH} & \textcolor{red}{$0.5 \times 0.5 \times 0.5$} & \textcolor{red}{$0.125$} \\
+HTT & $0.5 \times 0.5 \times 0.5$ & $0.125$ \\
+\textcolor{red}{THH} & \textcolor{red}{$0.5 \times 0.5 \times 0.5$} & \textcolor{red}{$0.125$} \\
+THT & $0.5 \times 0.5 \times 0.5$ & $0.125$ \\
+TTH & $0.5 \times 0.5 \times 0.5$ & $0.125$ \\
+TTT & $0.5 \times 0.5 \times 0.5$ & $0.125$ \\
+\end{tabular}
+
+\textcolor{red}{Exactly 2 heads: $0.125 + 0.125 + 0.125 = 0.375 = 37.5\%$}
+\end{center}
+
+## The binomial model for counts
+
+**Example 2:** There are 3 animals in a population. A survey has a 20\% chance of detecting each animal (independently). What is the probability of detecting 2 animals?
+
+- $N=3$ trials; D = detected (success), M = missed
+- Each trial has $p=0.2$ for detected and $1-p=0.8$ for not detected
+
+\begin{center}
+\footnotesize
+\renewcommand{\arraystretch}{1.1}
+\begin{tabular}{ccc}
+\textbf{Sequence} & \textbf{Multiply the detection probabilities} & \textbf{Probability} \\
+DDD & $0.2 \times 0.2 \times 0.2$ & $0.008$ \\
+\textcolor{red}{DDM} & \textcolor{red}{$0.2 \times 0.2 \times 0.8$} & \textcolor{red}{$0.032$} \\
+\textcolor{red}{DMD} & \textcolor{red}{$0.2 \times 0.8 \times 0.2$} & \textcolor{red}{$0.032$} \\
+DMM & $0.2 \times 0.8 \times 0.8$ & $0.128$ \\
+\textcolor{red}{MDD} & \textcolor{red}{$0.8 \times 0.2 \times 0.2$} & \textcolor{red}{$0.032$} \\
+MDM & $0.8 \times 0.2 \times 0.8$ & $0.128$ \\
+MMD & $0.8 \times 0.8 \times 0.2$ & $0.128$ \\
+MMM & $0.8 \times 0.8 \times 0.8$ & $0.512$ \\
+\end{tabular}
+
+\textcolor{red}{Exactly 2 animals: $0.032 + 0.032 + 0.032 = 0.096 = 9.6\%$}
+\end{center}
+
+## The binomial model for counts
+
+The probability of getting $n$ successes out of $N$ trials, each with success probability $p_c$ is 
+$$
+\underbrace{f(n)}_{
+  \substack{
+    \text{Probability of } n \text{ successes}\\
+    \text{from } N \text{ trials}
+  }
+}
+=
+\overbrace{\binom{N}{n}}^{
+  \substack{
+    \text{Number of different sequences}\\
+    \text{of length } N \text{ with } n \text{ successes}
+  }
+}
+\underbrace{p_c^n}_{
+  \substack{
+    \text{Probability of}\\
+    n \text{ successes}
+  }
+}
+\overbrace{(1-p_c)^{N-n}}^{
+  \substack{
+    \text{Probability of}\\
+    N-n \text{ failures}
+  }
+}
+$$
+
+\vspace{1em}
+
+- \alert{Easy to calculate $f(n)$ in R!}
+
+```{r, echo = TRUE}
+n <- 10; N <- 20; p <- 0.3 
+dbinom(n, N, p)
+```
+
+<!---
+\let\thefootnote\relax\footnotetext{this is standard and can be looked up on, eg, \href{https://en.wikipedia.org/wiki/Binomial_distribution}{wikipedia}}
+--->
+
+## The binomial model for counts
+
+- Assumptions of the binomial model:
+    - fixed number of trials $N$, 
+    - trials are independent, 
+    - each trial has the same success probability $p_c$ 
+
+\vspace{2em}
+
+- Properties of the binomial model:
+    - expected value: $\mathbb{E}(n)=Np_c$
+    - variance: $\text{Var}(n)=Np_c(1-p_c)$
+    - from this we can work out that the estimator for $\hat{N}$ is unbiased
+    - and calculate its variance
+
+## Maximum likelihood estimators
+
+Maximum likelihood estimators can be used for any model where you can write down the likelihood.
+
+- $\theta$ is the parameter or parameters of interest
+- $\mathcal{L}(\theta)$ is the likelihood function: 
+    - it's a function of the parameter(s) $\theta$
+    - it's the probability of observing data given a specific value of $\theta$
+    - eg, *probability of observing 20 juniper trees if* $N=100$
+
+## Binomial example using the juniper point transects
+
+Reminder of the nine circular plots (point transects) and data:
+
+- juniper trees observed: $n = 20$
+- proportion of region covered: $p_c = 15.90/100 \approx 0.159$
+- inference objective: estimate the true abundance $N$
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=0cm, yshift=-1.8cm] at (current page){
+\includegraphics[height=1.8in]{figures/region-with-plots-with-samplesize}};
+\end{tikzpicture}
+
+## Binomial example using the juniper point transects
+
+Reminder of the nine circular plots (point transects) and data:
+
+- juniper trees observed: $n = 20$
+- proportion of region covered: $p_c = 15.90/100 \approx 0.159$
+- inference objective: estimate the true abundance $N$
+
+\vspace{0.5cm}
+
+Suppose a binomial model and use the likelihood function (binomial PMF) to calculate probability of observing 20 for any value of $N$
+
+$${\mathcal{L}}(N)= \binom Nn p_c^n(1-p_c)^{(N-n)}$$
+
+## Binomial example using the juniper point transects
+
+Reminder of the nine circular plots (point transects) and data:
+
+- juniper trees observed: $\hig{n = 20}$
+- proportion of region covered: $p_c = 15.90/100 \approx \hir{0.159}$
+- inference objective: estimate the true abundance $N$
+
+\vspace{0.5cm}
+
+Suppose a binomial model and use the likelihood function (binomial PMF) to calculate probability of observing 20 for any value of $N$
+
+$${\mathcal{L}}(N)= \binom {N}{\hig{20}} (\hir{0.159})^{\hig{20}}(1-\hir{0.159})^{N-\hig{20}}$$
+
+\let\thefootnote\relax\footnotetext{note: ${\mathcal{L}}(\theta)=0$ for $N<20$ because $n$ cannot be larger than $N$}
+
+## Binomial example using the juniper point transects
+
+Reminder of the nine circular plots (point transects) and data:
+
+- juniper trees observed: $\hig{n = 20}$
+- proportion of region covered: $p_c = 15.90/100 \approx \hir{0.159}$
+- inference objective: estimate the true abundance $N$
+
+\vspace{0.5cm}
+
+Suppose a binomial model and use the likelihood function (binomial PMF) to calculate probability of observing 20 for any value of $N$
+
+$${\mathcal{L}}(N)= \binom {N}{\hig{20}} (\hir{0.159})^{\hig{20}}(1-\hir{0.159})^{N-\hig{20}}$$
+
+- $N$ is the only unknown
+- can use this function to find the \alert{maximum likelihood estimate}
+
+\let\thefootnote\relax\footnotetext{note: ${\mathcal{L}}(\theta)=0$ for $N<20$ because $n$ cannot be larger than $N$}
+
+## How many juniper trees?
+
+$${\mathcal{L}}(N)= \binom {N}{\hig{20}} (\hir{0.159})^{\hig{20}}(1-\hir{0.159})^{N-\hig{20}}$$
+
+- evaluate the likelihood function at a range of potential values of $N$
+- find the $N$ that gives the highest likelihood of $n=20$
+- this is the maximum likelihood estimator
+- easy to do in `R`
+
+\vspace{0.5cm}
+
+```{r, size="footnotesize"}
+n <- 20
+p <- 0.159
+
+N <- seq(20,250)
+Lik <- dbinom(n,N,p) # vectorised R function
+```
+
+
+## How many juniper trees?
+
+$${\mathcal{L}}(N)= \binom {N}{20} (0.159)^{20}(1-0.159)^{N-20}$$
+
+```{r juniper-likelihood, echo=FALSE, results='hide'}
+N <- seq(20,250,1)
+Lik <- numeric(length(N))
+n <- 20
+p <- 0.159
+Lik <- dbinom(n,N,p) # vectorised R function
+likdf <- data.frame(Likelihood = Lik,
+                    Abundance = N)
+
+likplot <- ggplot(likdf, aes(Abundance, Likelihood)) +
+  geom_line() +
+  geom_segment(aes(xend=Abundance, y=0, yend=Likelihood), color="grey") +
+  geom_point(size=3, color=rd, fill=alpha(rd, 0.3), shape=21,stroke=1) +
+  labs(y = "Likelihood (L(N))", x = "Abundance (N)") +
+  theme_bw() +
+  theme(plot.margin = unit(c(1,1,1,1), "cm"),
+        axis.title.y = element_text(margin = unit(c(0, 3, 0, 0), "mm"))) +
+  transition_reveal(Abundance)
+# The static plot below is regenerated from the juniper data when rendering.
+
+likplot_static <- ggplot(likdf, aes(Abundance, Likelihood)) +
+  geom_segment(aes(xend=Abundance, y=0, yend=Likelihood),color="grey") +
+  geom_segment(aes(x=Abundance[which.max(Likelihood)],xend=Abundance[which.max(Likelihood)],
+                   y=0, yend=max(Likelihood))) +
+  geom_line() +
+  geom_point(aes(x=Abundance[which.max(Likelihood)],
+                 y=max(Likelihood)),size=2, color=rd, fill=alpha(rd, 0.3), shape=21, stroke=1) +
+  labs(y = "Likelihood (L(N))", x = "Abundance (N)") +
+  theme_bw() +
+  theme(plot.margin = unit(c(1,1,1,1), "cm"),
+        axis.title.y = element_text(margin = unit(c(0, 3, 0, 0), "mm")))
+
+ggsave(plot = likplot_static, filename = "figures/juniper/likelihood.png", device = "png", width = 5.5, height = 4, units = "in", dpi=600)
+```
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=0cm, yshift=-1.5cm] at (current page){
+\includegraphics[width=0.6\textwidth]{figures/juniper/likelihood.png}};
+\end{tikzpicture}
+
+## How many juniper trees?
+
+The maximum likelihood estimate is the value of $N$ that gives the maximum likelihood of our observation of 20 with $p_c=0.159$: $\hat{N} = 125$.
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=0cm, yshift=-1.55cm] at (current page){
+\includegraphics[height=1.75in]{figures/juniper/likelihood.png}};
+\end{tikzpicture}
+
+How much uncertainty is there around this estimate?
+
+# Confidence Intervals
+
+## Beyond point estimates
+
+We just discussed using maximum likelihood estimators to generate point estimates of parameters of interest, \alert{but we should never present point estimates without some measure of uncertainty}!
+
+- having defined a probability model for the data generating process, we have everything we need to define the sampling distribution
+- prefer not to work with the whole sampling distribution
+- common practice is to present a \alert{confidence interval}
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=0cm, yshift=-2.5cm] at (current page){
+\includegraphics[height=1.0in]{figures/cheetah}};
+\end{tikzpicture}
+
+## Confidence intervals
+
+The confidence interval is a very common way to quantify uncertainty
+
+- \alert{estimates} of a lower and upper bound $(L,U)$
+- both are a function of the data (*they are random variables*)
+
+\vspace{0.5cm}
+
+Basic idea is: for a parameter $\theta$, pick estimators $L$ and $U$ to satisfy:
+$$\mathbb{P}(L<\theta<U) = \alpha$$
+
+- True $\theta$ lies between $L$ and $U$ is $\alpha$ of the time
+- for a 95% confidence interval, $\alpha=0.95$
+
+## Remember the 'on average' interpretation
+
+Imagine we could repeat surveys many times & record estimate each time
+
+- generate a sampling distribution
+- describes what we expect if we did the survey again
+- \alert{same idea for confidence interval estimators}
+    - $L$ and $U$ are also random variables
+    - estimate the \alert{interval} each time
+    - generate a \alert{distribution} of intervals
+
+## Conceptual motivatation (via simulation)
+
+Imagine we could repeat two surveys, each 100 times:
+
+- assume a binomial data generating model
+    - an unbiased estimator
+    - variance shrinks with increasing sample size
+    
+- consider two surveys that differ in coverage (and hence variance)
+    - survey 1: $N=250$ and $p_c=0.25$
+    - survey 2: $N=250$ and $p_c=0.75$
+
+- calculate the interval $(L,U)$ for each survey and replicate
+
+```{r, echo=FALSE, results='hide', message=FALSE, error=FALSE}
+set.seed(12345)
+N <- 250
+p <- c(0.25,0.75)
+n <- matrix(NA,100,2)
+lwr <- matrix(NA,100,2)
+upr <- matrix(NA,100,2)
+
+n[,1] <- rbinom(100,N,p[1])
+lwr[,1] <- n[,1]/p[1] - 1.96*sqrt((n[,1]/p[1]) * ((1-p[1])/p[1]))
+upr[,1] <- n[,1]/p[1] + 1.96*sqrt((n[,1]/p[1]) * ((1-p[1])/p[1]))
+  
+n[,2] <- rbinom(100,N,p[2])
+lwr[,2] <- n[,2]/p[2] - 1.96*sqrt((n[,2]/p[2]) * ((1-p[2])/p[2]))
+upr[,2] <- n[,2]/p[2] + 1.96*sqrt((n[,2]/p[2]) * ((1-p[2])/p[2]))
+
+pdf(file="figures/intervals.pdf",width = 8, height = 5)
+par(mfrow=c(1,2),mar=c(4,1,1,1), oma=c(0,0,0,0))
+plot(0,0,type="n", xlim=c(100,400), ylim=c(1,100), main="", 
+     xlab="Abundance", axes=FALSE)
+box(bty="o")
+axis(1)
+abline(v=250)
+segments(x0=lwr[,1],y0 = 1:100, x1 = upr[,1],y1 = 1:100, 
+         col=ifelse(upr[,1]<250 | lwr[,1]>250, rd,bl), 
+         lwd=ifelse(upr[,1]<250 | lwr[,1]>250, 2, 1))
+
+plot(0,0,type="n", xlim=c(100,400), ylim=c(1,100), main="", 
+     xlab="Abundance", axes=FALSE)
+box(bty="o")
+axis(1)
+abline(v=250)
+segments(x0=lwr[,2],y0 = 1:100, x1 = upr[,2],y1 = 1:100, 
+         col=ifelse(upr[,2]<250 | lwr[,2]>250, rd, bl), 
+         lwd=ifelse(upr[,2]<250 | lwr[,2]>250, 2, 1))
+dev.off()
+```
+
+## Confidence intervals
+
+- a distribution of 100 95% confidence intervals (ie, $\alpha=0.95$)
+    - these are random intervals
+    - most include true value (\textcolor{bl}{---}), but some don't (\textcolor{rd}{---})
+    - proportion holds across levels of variance
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=0cm, yshift=-1.5cm] at (current page){
+\includegraphics[height=2in]{figures/intervals}};
+\end{tikzpicture}
+
+
+
+## Confidence intervals
+
+- in general $x\%$ of confidence intervals calculated at the $x\%$ confidence level will include the true parameter value. 
+    - 95% of the 95% confidence intervals will include truth
+    - 90% of the 90% confidence intervals will include truth
+    - if assumptions are met
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=0cm, yshift=-1.5cm] at (current page){
+\includegraphics[height=2in]{figures/intervals}};
+\end{tikzpicture}
+
+
+## How to calculate the intervals?
+
+For large samples, and under the usual regularity conditions, MLEs are approximately normally distributed:
+
+$$\hat{N} \;\dot\sim\; \text{Normal}\bigl(N,\text{Var}(\hat{N})\bigr).$$
+
+- The variance $\text{Var}(\hat{N})$ measures how much the estimate varies between repeated surveys.
+- **Different sampling designs require different variance calculations**: simple random, stratified random, and systematic sampling.
+
+\vspace{0.5cm}
+
+**We will use R to calculate abundance estimates and confidence intervals in the practical.**

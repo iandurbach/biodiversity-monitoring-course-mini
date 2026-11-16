@@ -1,0 +1,35 @@
+PLOT SAMPLING
+=============
+
+Bibliography and linked learning resources extracted from the course QMDs.
+QMDs reviewed:
+  01_plot_sampling.qmd
+  02_plot_sampling_practical.qmd
+Checked: 27 October 2026.
+
+LITERATURE
+----------
+
+[1] Seber, G. A. F. (1982). The Estimation of Animal Abundance and Related Parameters,
+    2nd ed. Charles Griffin, London. Later reprinted by Blackburn Press; reprint ISBN
+    978-1-930665-55-2.
+
+[2] Williams, B. K., Nichols, J. D. & Conroy, M. J. (2002). Analysis and Management of
+    Animal Populations: Modeling, Estimation, and Decision Making. Academic Press. ISBN
+    978-0-12-754406-9.
+
+[3] Borchers, D. L., Buckland, S. T. & Zucchini, W. (2002). Estimating Animal Abundance:
+    Closed Populations. Statistics for Biology and Health. Springer, London.
+
+[4] Kéry, M. & Royle, J. A. (2016). Applied Hierarchical Modeling in Ecology: Analysis
+    of Distribution, Abundance and Species Richness in R and BUGS. Volume 1: Prelude and
+    Static Models. Academic Press. ISBN 978-0-12-801378-6.
+
+[5] Rahmonov, O., Szczypek, T., Niedźwiedź, T., Myga-Piątek, U., Rahmonov, M. & Snytko,
+    V. A. (2017). The human impact on the transformation of juniper forest landscape in
+    the western part of the Pamir-Alay range (Tajikistan). Environmental Earth Sciences,
+    76(8), 324.
+    DOI: https://doi.org/10.1007/s12665-017-6643-4
+
+[6] Wikipedia contributors (n.d.). Binomial distribution. Wikipedia.
+    URL: https://en.wikipedia.org/wiki/Binomial_distribution

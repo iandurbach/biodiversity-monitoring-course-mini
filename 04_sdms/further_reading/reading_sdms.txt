@@ -1,0 +1,113 @@
+SPECIES DISTRIBUTION MODELLING
+==============================
+
+Bibliography and linked learning resources extracted from the course QMDs.
+QMDs reviewed:
+  01_sdms.qmd
+  02_sdm_practical.qmd
+Checked: 27 October 2026.
+
+LITERATURE
+----------
+
+[1] Franklin, J. (2009). Mapping Species Distributions: Spatial Inference and
+    Prediction. With contributions by Jennifer A. Miller. Cambridge University Press.
+    ISBN 978-0-521-87635-3.
+
+[2] Dormann, C. F. (2011). Modelling Species’ Distributions. In F. Jopp, H. Reuter & B.
+    Breckling (eds), Modelling Complex Ecological Dynamics: An Introduction into
+    Ecological Modelling for Students, Teachers & Scientists, pp. 179–196. Springer,
+    Berlin/Heidelberg.
+
+[3] Merow, C., Smith, M. J. & Silander, J. A. (2013). A practical guide to MaxEnt for
+    modeling species' distributions: what it does, and why inputs and settings matter.
+    Ecography, 36(10), 1058-1069.
+    DOI: https://doi.org/10.1111/j.1600-0587.2013.07872.x
+
+[4] Roberts, D. R., Bahn, V., Ciuti, S., Boyce, M. S., Elith, J., Guillera‐Arroita, G.,
+    Hauenstein, S., Lahoz‐Monfort, J. J., Schröder, B., Thuiller, W., Warton, D. I.,
+    Wintle, B. A., Hartig, F. & Dormann, C. F. (2017). Cross‐validation strategies for
+    data with temporal, spatial, hierarchical, or phylogenetic structure. Ecography,
+    40(8), 913-929.
+    DOI: https://doi.org/10.1111/ecog.02881
+
+[5] Kéry, M., Gardner, B. & Monnerat, C. (2010). Predicting species distributions from
+    checklist data using site‐occupancy models. Journal of Biogeography, 37(10),
+    1851-1862.
+    DOI: https://doi.org/10.1111/j.1365-2699.2010.02345.x
+
+[6] MacKenzie, D. I., Nichols, J. D., Lachman, G. B., Droege, S., Royle, J. A. &
+    Langtimm, C. A. (2002). Estimating site occupancy rates when detection probabilities
+    are less than one. Ecology, 83(8), 2248-2255.
+    DOI: https://doi.org/10.1890/0012-9658(2002)083[2248:esorwd]2.0.co;2
+
+[7] Fithian, W. & Hastie, T. (2013). Finite-sample equivalence in statistical models for
+    presence-only data. The Annals of Applied Statistics, 7(4), 1917-1939.
+    DOI: https://doi.org/10.1214/13-aoas667
+
+[8] Hijmans, R. J. & Elith, J. (2023). Species Distribution Models. R Spatial tutorial,
+    PDF dated 10 January 2023. The live tutorial is now titled Species distribution
+    modeling.
+    URL: https://rspatial.org/sdm/
+    URL: https://rspatial.org/sdm/3_sdm_absence-background.html
+
+[9] Visser, V. (n.d.). Species Distribution Modelling. SEEC Stats Toolbox Seminar,
+    University of Cape Town.
+    URL: https://science.uct.ac.za/seec/stats-toolbox-seminars-spatial-and-species-distribution-toolboxes/species-distribution-modelling
+
+[10] Visser, V. (n.d.). SDMs – using spatial information to supplement biased occurrence
+    data. SEEC Stats Toolbox Seminar, University of Cape Town.
+    URL: https://science.uct.ac.za/seec/stats-toolbox-seminars-spatial-and-species-distribution-toolboxes/sdms-using-spatial-information-supplement-biased-occurrence-data
+
+[11] Ngwenya, Z. (n.d.). Building and using SDM ensembles. SEEC Stats Toolbox Seminar,
+    University of Cape Town.
+    URL: https://science.uct.ac.za/seec/stats-toolbox-seminars-spatial-and-species-distribution-toolboxes/building-and-using-sdm-ensembles
+
+[12] SEEC, University of Cape Town (n.d.). Spatial and Species Distribution Toolboxes.
+    Seminar collection.
+    URL: https://science.uct.ac.za/seec/stats-toolbox-seminars/spatial-and-species-distribution-toolboxes
+
+[13] WorldClim (2020; live documentation). Historical climate data: WorldClim version
+    2.1, 1970–2000; Bioclimatic variables.
+    URL: https://www.worldclim.org/data/worldclim21.html
+    URL: https://www.worldclim.org/data/bioclim.html
+
+[14] Hijmans, R. J. and terra contributors (n.d.). terra: Spatial Data Analysis. Package
+    reference manual.
+    DOI: https://doi.org/10.32614/cran.package.terra
+    URL: https://rspatial.github.io/terra/reference/
+
+[15] Phillips, S. (n.d.). maxnet: Fitting “Maxent” Species Distribution Models with
+    “glmnet”. CRAN package documentation.
+    DOI: https://doi.org/10.32614/cran.package.maxnet
+    URL: https://cran.r-project.org/package=maxnet
+
+[16] R Core Team (n.d.). R statistical documentation: stats::glm, fitting generalized
+    linear models.
+    URL: https://stat.ethz.ch/R-manual/R-devel/library/stats/html/glm.html
+
+[17] Davletbakov, A. T. (2026). Guidelines for monitoring the abundance and range of
+    Desert monitor (Varanus griseus caspius) within the Kyrgyz Republic. Bishkek.
+    Prepared with support from the GEF–UNDP Pamir Alai Project; commissioned by the
+    International Snow Leopard Trust.
+
+[18] Davletbakov, A. T. (2026). A methodology on recording of Central Asian ibex (Capra
+    sibirica alaiana), Marco Polo sheep (Ovis ammon polii), and Severtsov’s mountain
+    sheep (Ovis ammon severtzovi). Snow Leopard Trust. Bishkek.
+
+[19] Davletbakov, A. T. (2026). Methodological recommendations for recording the
+    abundance and distribution of the white-breasted or snow pigeon (Columba leuconota
+    Vig.) in the Pamir-Alai region within the Kyrgyz Republic. Bishkek. GEF–UNDP Pamir
+    Alai Project / International Snow Leopard Trust.
+
+[20] Davletbakov, A. T. & Ilbirs Foundation (n.d.). Instructions for monitoring the
+    Central Asian otter (Lutra lutra seistanica Birula). Local field protocol.
+
+[21] Davletbakov, A. (2026, July). Review of national methodologies for population
+    assessment of indicator fauna species of the Pamir-Alai. UNDP–GEF Project:
+    Integrated Community-Based Management of High-Value Mountain Ecosystems in Southern
+    Kyrgyzstan for Multiple Benefits. Biology Institute, National Academy of Science,
+    Kyrgyz Republic.
+
+[22] Davletbakov, A. (n.d.). Fauna Species Bibliography and Conservation Actors in
+    Kyrgyzstan. Biology Institute, National Academy of Science, Kyrgyz Republic.

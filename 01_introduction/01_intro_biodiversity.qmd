@@ -1,0 +1,309 @@
+---
+title: Introduction to Biodiversity Monitoring
+subtitle: Biodiversity Monitoring Course, Module 1
+fontsize: 10pt
+format:
+  beamer:
+    theme: metropolis
+    incremental: false
+    slide-level: 2
+    pdf-engine: xelatex
+    syntax-highlighting: tango
+    include-in-header:
+      text: |
+        \usepackage{arydshln}
+        \usepackage{animate}
+        \definecolor{bl}{rgb}{0.16,0.32,0.75}
+        \definecolor{rd}{rgb}{0.82,0.1,0.26}
+        \definecolor{grn}{rgb}{0.55,0.71,0.0}
+        \providecommand{\hig}[1]{\textcolor{grn}{#1}}
+        \providecommand{\hir}[1]{\textcolor{rd}{#1}}
+        % Use a shared rhythm for text slides, with tighter gaps within nested lists.
+        \newcommand{\roomyitems}[1][0.5em]{\renewcommand{\tightlist}{\setlength{\itemsep}{#1}\setlength{\parskip}{0pt}\ifnum\csname @itemdepth\endcsname>1\setlength{\itemsep}{0.1em}\fi}}
+        \newcommand{\spacedslide}[1][0.5em]{\roomyitems[#1]\setlength{\parskip}{0.45em}}
+        \setbeamertemplate{title page}{%
+          \centering
+          \includegraphics[width=0.27\textwidth,height=1.1cm,keepaspectratio]{../logos/01-standard-black-text.png}\hfill
+          \includegraphics[width=0.40\textwidth,height=1.1cm,keepaspectratio]{../logos/creem-long.png}\hfill
+          \includegraphics[width=0.19\textwidth,height=1.1cm,keepaspectratio]{../logos/SLT-Logo-2016-300dpi-Regular.jpg}\par
+          \vspace{0.35cm}
+          {\LARGE\inserttitle\par}
+          \vspace{0.35cm}
+          {\normalsize\insertsubtitle\par}
+          \vspace{0.25cm}
+          {\small UNDP-GEF Project\par}
+          \vspace{0.15cm}
+          {\small ``Integrated Community-based Management of High Value Mountain Ecosystems in Southern Kyrgyzstan for Multiple Benefits''\par}
+          \vfill
+          {\fontsize{6}{7}\selectfont
+          \textcopyright{} 2026 University of St Andrews (Centre for Research into Ecological and Environmental Modelling, CREEM), Snow Leopard Trust, developed within the framework of the UNDP-GEF Pamir-Alai project. Licensed under CC BY 4.0. You may share and adapt these materials if you keep this credit and indicate any changes.\par}
+        }
+classoption: t
+urlcolor: teal
+---
+
+# What is biodiversity?
+
+## What is biodiversity?
+
+Variety and abundance of biological life
+
+
+\begin{center}
+\includegraphics[width=\textwidth,height=2.6in,keepaspectratio]{figures/biodiversity/2022.09.03_AJohnston_biodiversity_loss_cambo/fife_biodiversity}
+\end{center}
+
+## What is biodiversity?
+
+\spacedslide
+
+Variety and abundance of biological life
+
+ - There is no single definition or metric of biodiversity
+ - Impossible to define succinctly or precisely
+ - We typically do not include humans in estimates of biodiversity
+ - The term is used loosely in the press
+ 
+
+## Higher or lower?
+
+Which site has higher biodiversity? 
+
+![](figures/biodiversity_richness_evenness.png){height=5.7cm fig-align="center"}
+
+
+# Why do we monitor biodiversity? 
+
+## Why do we monitor biodiversity?
+
+\spacedslide
+
+- To track how nature is changing
+- To identify species or regions most at risk
+- To identify causes of change
+- To plan effective conservation action
+- To track a community with one metric
+
+## Why do we monitor biodiversity?
+
+\spacedslide
+
+Convention on Biological Diversity
+
+Montreal, Canada, December 2022
+
+
+\alert{TARGET 4}
+
+Ensure urgent management actions to halt human induced extinction of known threatened species and for the recovery and conservation of species
+
+
+\alert{TARGET 21}
+
+Ensure that the best available data, information and knowledge, are accessible to decision makers, practitioners and the public 
+
+## What is biodiversity? 
+
+There are three scales at which biodiversity can be measured: 
+
+ - \alert{$\alpha\ diversity$}: biodiversity at a local site and time 
+ - \alert{$\beta\ diversity$}: biodiversity difference between sites or times  
+ - \alert{$\gamma\ diversity$}: biodiversity across a region
+ 
+\begin{center}
+\includegraphics[width=\textwidth,height=1.65in,keepaspectratio]{figures/biodiversity/alpha_beta_gamma_div/Slide4}
+\end{center}
+ 
+\footnotesize
+'local' = small enough that biodiversity can be accurately measured. 
+
+## What is biodiversity? 
+
+\spacedslide
+
+There are typically three _types_ of biodiversity that can be measured: 
+
+ - \alert{species richness}: number of species
+      - of a defined taxonomic group (e.g. birds, butterflies, ants)
+      - at a particular time (season, year)
+      - BUT, we can't count ALL species (\alert{detectability!}), so how do we estimate this? 
+
+ - \alert{evenness}: evenness or skewness of species abundances
+      - is a community dominated by a single species or an even balance of species?
+      - an exactly even balance is unrealistic in nature
+      - how skewed / balanced is this community? 
+
+ - \alert{diversity}: combination of richness and evenness
+
+
+## What is biodiversity? 
+
+\spacedslide
+
+Clearly we need to know:
+
+- Where animals are, and where they are not (distribution, occupancy)
+- How many animals there are (abundance)
+
+But how to measure these?
+
+\alert{Monitoring surveys and methods for analysing the resulting data!}
+
+## Estimating species presence
+
+\spacedslide
+
+\alert{Is a species present at a particular site during a defined period?}
+
+- Reliable detections confirm presence, but not detecting a species does not prove absence
+- Animals may be hidden, inactive or temporarily outside the surveyed area
+- Repeated surveys help estimate \textbf{detectability}: the probability of detecting a species when it is present
+- \textbf{Example:} Repeated camera surveys estimate which valleys ibex use, helping target protection and track changes in site use.
+
+\footnotesize
+Martin et al. (2007), \textit{Conservation Biology} 21:472--481; Nichols \& Williams (2006), \textit{Trends in Ecology \& Evolution} 21:668--673.
+
+## Estimating species distributions
+
+\spacedslide
+
+\alert{Where does a species occur across a landscape?}
+
+- Surveys tell us about sampled locations; distribution models link these records to habitat, elevation and other environmental variables
+- Models predict where a species is likely to occur, including places we have not surveyed
+- Maps help identify areas for protection, habitat restoration and further surveys
+- \textbf{Example:} Otter sign surveys allow for predicting favourable habitat, helping to decide where to place future surveys.
+
+## Estimating species abundance
+
+\spacedslide
+
+\alert{How many individuals are there, and where are they concentrated?}
+
+- \textbf{Abundance}: number of individuals in a defined area and period; \textbf{density}: number per unit area
+- A species can occur in many places but have most individuals concentrated in a few
+- Johnston et al. found only \textbf{10--58\% overlap} between the top 50 sites selected using occurrence and relative abundance models for six waterbird species
+- \textbf{Example:} Camera surveys and individual identification provide estimates of snow leopard population sizes and, if repeated over time, birth and death rates.
+
+\footnotesize
+Johnston et al. (2015), \textit{Ecological Applications} 25:1749--1756; Katzner et al. (2011), \textit{Animal Conservation} 14:328--332.
+
+# What is monitoring?
+
+## What is monitoring?
+
+\spacedslide
+
+\alert{Monitoring is planned, repeated measurement to answer a question about change.}
+
+- One survey provides a \textbf{baseline}: an estimate of conditions at that time
+- Comparable surveys repeated over time let us estimate changes in distribution, abundance or biodiversity
+- Define the species, area, season, measurement and survey interval before starting
+- Record survey effort and account for detectability so that changes in observations can be separated from changes in nature
+
+\textbf{Example:} Estimate ibex density in selected valleys each autumn, before and after a change in grazing management.
+
+\footnotesize
+Nichols \& Williams (2006), \textit{Trends in Ecology \& Evolution} 21:668--673.
+
+## Why monitor?
+
+\spacedslide
+
+- \alert{Plan conservation actions}
+   - Identify priority species, places and seasons
+   - Direct limited staff and funding to where actions can help most
+
+- \alert{Evaluate conservation results}
+   - Compare population responses with agreed objectives
+   - More patrols or money spent do not, by themselves, demonstrate species recovery
+
+- \alert{Learn and improve management}
+   - Predict how populations might respond to alternative actions
+   - Compare monitoring results with those predictions and use what we learn in the next decision
+
+\footnotesize
+Karanth et al., \textit{Role of Monitoring in Global Tiger Conservation}, Nichols \& Williams (2006).
+  
+## Good monitoring 
+
+\spacedslide
+
+\alert{Start with the decision or scientific question, then design the monitoring.}
+
+- Agree on a conservation objective and the actions available
+- State alternative explanations and predict responses to each action
+- Choose measurements, sites and repeat visits that can distinguish those predictions; account for detectability and uncertainty
+- Plan who will analyse the data, review results and use them in decisions
+
+\textbf{Hypothetical example:} Will reduced livestock grazing increase ibex density? Monitor valleys with changed grazing and comparable valleys without the change, before and after management.
+
+\textbf{Adaptive management:} act $\rightarrow$ monitor $\rightarrow$ compare predictions $\rightarrow$ update the next decision.
+
+\footnotesize
+Nichols \& Williams (2006), \textit{Trends in Ecology \& Evolution} 21:668--673.
+
+## Bad monitoring
+
+\spacedslide
+
+- Collecting data without a clear question, analysis plan or route to conservation action
+- Surveying only convenient sites, changing effort without recording it, or treating counts as the whole population
+- Waiting for a statistically significant decline before considering action: detecting a trend can take years
+- Detecting a decline but collecting no information to help evaluate possible remedies
+
+\textbf{A warning from the US:} Estimated snail kite abundance fell by about \textbf{55\% from 1997 to 2005}. A single annual count failed to reveal the decline as detectability increased.
+
+\footnotesize
+Nichols \& Williams (2006); Martin et al. (2007), \textit{Conservation Biology} 21:472--481.
+
+## The rest of this course
+
+\spacedslide
+
+- Module 1: Introduction to Statistical Modelling in R
+- Module 2: Plot sampling
+- Module 3: Occupancy modelling
+- Module 4: Species distribution modelling
+- Module 5: Distance sampling
+- Module 6: Spatial capture recapture methods
+
+## Core principles
+
+\spacedslide
+
+:::: {.columns align="top"}
+
+::: {.column width="49%"}
+
+- \alert{Careful design of surveys and survey protocols}
+   - Efficient allocation of survey effort
+   - Field protocols
+   - Data collection plan
+   
+- \alert{Using appropriate statistical methods}
+   - Data requirements
+   - Understanding and testing model assumptions 
+   - Basic implementation with pointers to further reading
+
+:::
+
+::: {.column width="49%"}
+
+- \alert{Reproducible workflow}
+   - Data management plan and secure storage
+   - Script-based statistical analysis (R)
+   - Documenting all decisions made
+
+- \alert{We use local species as case studies}
+    - Species selected by project partners
+    - Many of these already monitored in some form
+    - All examples and data are hypothetical. Applications are necessarily simplified.
+
+:::
+
+::::
+
+
+
+

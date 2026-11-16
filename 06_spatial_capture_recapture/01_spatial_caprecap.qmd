@@ -1,0 +1,532 @@
+---
+title: Spatial Capture Recapture Models
+subtitle: Biodiversity Monitoring Course, Module 6
+fontsize: 10pt
+format:
+  beamer:
+    theme: metropolis
+    incremental: false
+    slide-level: 2
+    pdf-engine: xelatex
+    syntax-highlighting: tango
+    include-in-header:
+      text: |
+        \usepackage{arydshln}
+        \usepackage{animate}
+        \definecolor{bl}{rgb}{0.16,0.32,0.75}
+        \definecolor{rd}{rgb}{0.82,0.1,0.26}
+        \definecolor{grn}{rgb}{0.55,0.71,0.0}
+        \providecommand{\hig}[1]{\textcolor{grn}{#1}}
+        \providecommand{\hir}[1]{\textcolor{rd}{#1}}
+        \newcommand{\roomyitems}[1][0.65em]{\renewcommand{\tightlist}{\setlength{\itemsep}{#1}\setlength{\parskip}{0pt}}}
+        \setbeamertemplate{title page}{%
+          \centering
+          \includegraphics[width=0.27\textwidth,height=1.1cm,keepaspectratio]{../logos/01-standard-black-text.png}\hfill
+          \includegraphics[width=0.40\textwidth,height=1.1cm,keepaspectratio]{../logos/creem-long.png}\hfill
+          \includegraphics[width=0.19\textwidth,height=1.1cm,keepaspectratio]{../logos/SLT-Logo-2016-300dpi-Regular.jpg}\par
+          \vspace{0.35cm}
+          {\LARGE\inserttitle\par}
+          \vspace{0.35cm}
+          {\normalsize\insertsubtitle\par}
+          \vspace{0.25cm}
+          {\small UNDP-GEF Project\par}
+          \vspace{0.15cm}
+          {\small ``Integrated Community-based Management of High Value Mountain Ecosystems in Southern Kyrgyzstan for Multiple Benefits''\par}
+          \vfill
+          {\fontsize{6}{7}\selectfont
+          \textcopyright{} 2026 University of St Andrews (Centre for Research into Ecological and Environmental Modelling, CREEM), Snow Leopard Trust, developed within the framework of the UNDP-GEF Pamir-Alai project. Licensed under CC BY 4.0. You may share and adapt these materials if you keep this credit and indicate any changes.\par}
+        }
+classoption: t
+urlcolor: teal
+---
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+library(knitr)
+library(secr)
+library(dplyr)
+library(ggplot2)
+library(MASS)
+
+knitr::opts_knit$set(global.par = TRUE)
+knitr::opts_chunk$set(fig.path="figures/01_spatial_caprecap-")
+
+def.chunk.hook <- knitr::knit_hooks$get("chunk")
+knitr::knit_hooks$set(
+  chunk = function(x, options) {
+    x <- def.chunk.hook(x, options)
+    chunk_size <- if (is.null(options$size)) "normalsize" else options$size
+    ifelse(
+      chunk_size != "normalsize",
+      paste0("\n \\", chunk_size, "\n\n", x, "\n\n \\normalsize"),
+      x
+    )
+  }
+)
+
+hook_output <- knit_hooks$get("output")
+knit_hooks$set(output = function(x, options) {
+  lines <- options$output.lines
+  if (is.null(lines)) {
+    return(hook_output(x, options))
+  }
+  x <- unlist(strsplit(x, "\n"))
+  more <- "..."
+  if (length(lines) == 1) {
+    if (length(x) > lines) {
+      x <- c(head(x, lines), more)
+    }
+  } else {
+    x <- c(more, x[lines], more)
+  }
+  x <- paste(c(x, ""), collapse = "\n")
+  hook_output(x, options)
+})
+
+# Paths are relative to this lecture's directory during Quarto rendering.
+load("output/pamir_alai_secr_inputs_capthist.RData")
+load("output/pamir_alai_secr_inputs_mask.RData")
+load("output/pamir_alai_fitted_models.RData")
+traps_df <- read.csv("data/practical/snow_leopard_traps.csv")
+caps_df <- read.csv("data/detections.csv")
+extrap_mask <- mask_survey_area
+```
+
+## Learning outcomes
+
+By the end of this lecture and practical, you should be able to:
+
+- Explain how spatial recaptures help estimate animal density and abundance.
+- Understand and be able to compile encounter histories from survey data.
+- Explain activity centres, distance-dependent detection and the state space.
+- Recognise suitable survey methods and the need for reliable individual IDs.
+- Explain key SCR assumptions and their consequences for survey design.
+- Outline a field survey using the four-step planning and data workflow.
+- Fit, compare, and interpret simple SCR models in R using `secr`.
+
+## Spatial capture-recapture (SCR)
+
+\small
+\setbeamerfont{itemize/enumerate body}{size=\small}
+\setbeamerfont{itemize/enumerate subbody}{size=\footnotesize}
+
+- Uses \alert{spatially explicit} encounter histories 
+    - fully described by a 3D $[n,J,K]$ array
+    - *who* was detected (individual, $i=1,\dots,n$)
+    - *when* (occasion, $k=1,\dots,K$)
+    - & importantly \alert{\emph{where}} (trap, $j=1,\dots,J$)
+
+\vspace{.25em}
+
+- To construct a joint model of
+    - a density model describing how animals are distributed in space
+    - a detection model that describing probabilities of detecting those animals
+
+\vspace{.25em}
+
+- That allows one to test a range of ecological theories:  
+    - density, abundance, demography
+    - spatial variation in density
+    - space use
+    - landscape connectivity
+    - movement/dispersal
+
+## SCR data collection methods
+
+\small
+\setbeamerfont{itemize/enumerate body}{size=\small}
+\setbeamerfont{itemize/enumerate subbody}{size=\footnotesize}
+
+Many field methods for generating spatial capture-recapture data:
+
+- live capture (direct)
+    - \alert{physical marking}
+    - eg, ear tags, bird bands, PIT tags...
+
+\vspace{.5em}
+
+- passive detection (direct)
+    - \alert{ID by distinctive natural marks/calls}
+    - eg, camera traps
+    - eg, sound recorders
+
+\vspace{.5em}
+
+- non-invasive genetic sampling (indirect)
+    - \alert{ID by genotype}
+    - eg, scat from line transects
+    - eg, hair from hair snares
+    - eg, urine from scent posts
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=3.5cm, yshift=1.5cm] at (current page){
+\includegraphics[height=0.79in]{figures/tiger.jpg}};
+\node[xshift=3.5cm, yshift=-0.8cm] at (current page){
+\includegraphics[height=0.79in]{figures/hair.jpg}};
+\node[xshift=4.52cm, yshift=-2.9cm] at (current page){
+\includegraphics[height=0.79in]{figures/eartag.jpg}};
+\node[xshift=2.7cm, yshift=-2.9cm] at (current page){
+\includegraphics[height=0.79in]{figures/scat.jpg}};
+\end{tikzpicture}
+
+## Example: snow leopard -- camera traps
+
+\vspace{0.35cm}
+\roomyitems[0.9em]
+
+**Natural marks identify the animal.**
+
+\vspace{0.3cm}
+
+- Place cameras across a mountain landscape; record station locations,
+  operating dates and each encounter.
+- Match flank patterns to identify the same cat at different stations.
+- Analyse individual encounter histories with camera stations as
+  **point detectors** (repeated images in a short time are one encounter).
+- Place cameras so that recaptures at different cameras are likely.
+
+<!-- Local context: ../slt_material/Fauna Species Bibliography and Conservation
+Actors in Kyrgyzstan.docx, snow leopard section (including Sarychat-Ertash
+camera monitoring). Field/method source: Sharma et al. (2020), PAWS Guidelines,
+further_reading/PAWS-guidelines-2020.pdf, printed pp. 20--27, 33--36.
+Illustrative survey, not a reported Kyrgyzstan estimate. This is the method
+used in the practical. Do not treat photographs in a burst as independent
+counts, or assume opposite flanks can always be matched. -->
+
+## Example: otter -- DNA from spraints
+
+\vspace{0.35cm}
+\roomyitems[0.9em]
+
+**Genetic identity replaces visible natural marks.**
+
+\vspace{0.3cm}
+
+- Extend local riverbank sign surveys by collecting fresh scat, with sample locations and GPS tracks of the searched routes.
+- Laboratory analysis identifies species and individuals. The same otter's
+  DNA at different locations provides spatial recaptures.
+- Analyse detections together with **where was searched**.
+- Consider movement along the river network when defining distances and
+  habitat.
+
+<!-- Local context: Davletbakov, A. T. / Ilbirs Foundation, Instructions for
+monitoring the Central Asian otter, ../slt_material/methodology in English/
+ Monitoring of otter_AD.docx: riverbank routes, spraints, tracks and cameras.
+DNA collection and SCR are proposed extensions, not claims about that protocol.
+Method example: Murphy, S. M., Adams, J. R., Waits, L. P. & Cox, J. J. (2021).
+Evaluating otter reintroduction outcomes using genetic spatial capture--recapture
+modified for dendritic networks. Ecology and Evolution 11: 15047--15061.
+https://doi.org/10.1002/ece3.8187
+That study concerns North American river otters, NOT Kyrgyzstan's Lutra lutra;
+the transferable lesson is network geometry, not a validated local model.
+The appropriate model depends on whether local movement is river-confined.
+Genotyping quality, sample age and repeat collection of the same deposit need
+protocols. A network density denominator must be explicit (e.g. otters/100 km). -->
+
+## Example: desert monitor -- marked animals
+
+\vspace{0.35cm}
+\roomyitems[0.9em]
+
+**An individual mark can make repeat searches useful for SCR.**
+
+\vspace{0.3cm}
+
+- A trained, authorised team captures, uniquely marks and releases monitors at their capture locations.
+- Revisit mapped search areas; record each marked animal's ID and exact
+  location, together with search coverage and effort.
+- Analyse these as **area-search detections**, rather than records from
+  fixed camera stations.
+
+<!-- Local context: Davletbakov, A. T. (2026), Guidelines for monitoring the
+abundance and range of Desert monitor (Varanus griseus caspius) within the
+Kyrgyz Republic, ../slt_material/methodology in English/Monitor Lizard_AD.docx:
+visual routes, tracks/burrows, GPS, photographs and temperature/activity.
+This is a hypothetical extension requiring species-specific marking and
+feasibility assessment, not an existing local SCR protocol or a handling lesson.
+Method source: Efford, M. (2011). Estimation of population density by spatially
+explicit capture--recapture analysis of data from area searches.
+Ecology 92: 2202--2207. https://doi.org/10.1890/11-0332.1
+Its reptile example is the flat-tailed horned lizard, NOT Varanus griseus.
+See also Efford, Polygon and transect detectors in secr:
+https://www.otago.ac.nz/density/pdfs/secr-polygondetectors.pdf
+Do not assume the species' stripes alone give validated individual photo-ID.
+Record searched areas, including visits without detections; capture locations
+alone do not define effort. Area search differs from single-catch trap sampling. -->
+
+## Concepts
+
+\vspace{5.6em}
+\roomyitems[1.1em]
+
+1.  Ecological surveys and sampling
+2.  Capture-recapture surveys
+3.  Spatial capture-recapture surveys
+
+## Population and sample {.c}
+
+\begin{center}
+\includegraphics[width=\linewidth,height=2.35in,keepaspectratio]{figures/intro1.png}
+\end{center}
+
+## Population and sample {.c}
+
+\begin{center}
+\includegraphics[width=\linewidth,height=2.35in,keepaspectratio]{figures/intro2.png}
+\end{center}
+
+## Snow leopards: Individual IDs {.c}
+
+\begin{center}
+\includegraphics[width=\linewidth,height=2.35in,keepaspectratio]{figures/snowleopards.png}
+\end{center}
+
+## (Non-spatial) capture-recapture (CR) {.c}
+
+\begin{center}
+\includegraphics[width=\linewidth,height=2.35in,keepaspectratio]{figures/intro3.png}
+\end{center}
+
+## (Non-spatial) capture-recapture (CR) {.c}
+
+\begin{center}
+\includegraphics[width=\linewidth,height=2.35in,keepaspectratio]{figures/intro4.png}
+\end{center}
+
+## (Non-spatial) capture-recapture (CR) {.c}
+
+\begin{center}
+\includegraphics[width=\linewidth,height=2.35in,keepaspectratio]{figures/intro5.png}
+\end{center}
+
+## (Non-spatial) capture-recapture (CR) {.c}
+
+\begin{center}
+\includegraphics[width=\linewidth,height=2.35in,keepaspectratio]{figures/intro6.png}
+\end{center}
+
+## (Non-spatial) capture-recapture (CR) {.c}
+
+\begin{center}
+\includegraphics[width=\linewidth,height=2.35in,keepaspectratio]{figures/intro7.png}
+\end{center}
+
+## (Non-spatial) capture-recapture (CR): Capture histories {.c}
+
+\begin{center}
+\includegraphics[width=\linewidth,height=2.35in,keepaspectratio]{figures/caphist1.png}
+\end{center}
+
+## (Non-spatial) capture-recapture (CR): Capture histories {.c}
+
+\begin{center}
+\includegraphics[width=\linewidth,height=2.35in,keepaspectratio]{figures/caphist2.png}
+\end{center}
+
+## Spatial capture-recapture (SCR): Single/multi catch traps {.c}
+
+\begin{center}
+\includegraphics[width=\linewidth,height=2.35in,keepaspectratio]{figures/scr1.png}
+\end{center}
+
+## Spatial capture-recapture (SCR): Single/multi catch traps {.c}
+
+\begin{center}
+\includegraphics[width=\linewidth,height=2.35in,keepaspectratio]{figures/scr2.png}
+\end{center}
+
+## Spatial capture-recapture (SCR): Single/multi catch traps {.c}
+
+\begin{center}
+\includegraphics[width=\linewidth,height=2.35in,keepaspectratio]{figures/scr3.png}
+\end{center}
+
+## Spatial capture-recapture (SCR): Single/multi catch traps {.c}
+
+\begin{center}
+\includegraphics[width=\linewidth,height=2.35in,keepaspectratio]{figures/scr4.png}
+\end{center}
+
+## Spatial capture-recapture (SCR): Single/multi catch traps {.c}
+
+\begin{center}
+\includegraphics[width=\linewidth,height=2.35in,keepaspectratio]{figures/sessions.png}
+\end{center}
+
+## Spatial capture-recapture (SCR): Count traps {.c}
+
+\begin{center}
+\includegraphics[width=\linewidth,height=2.35in,keepaspectratio]{figures/scr5.png}
+\end{center}
+
+## Spatial capture-recapture (SCR): Activity centre {.c}
+
+\begin{center}
+\includegraphics[width=\linewidth,height=2.35in,keepaspectratio]{figures/scr6.png}
+\end{center}
+
+## Spatial capture-recapture (SCR): Activity centre {.c}
+
+\begin{center}
+\includegraphics[width=\linewidth,height=2.35in,keepaspectratio]{figures/scr7.png}
+\end{center}
+
+## Spatial capture-recapture (SCR): Detector types
+
+\small
+\setlength{\tabcolsep}{4pt}
+
+
+: **SCR (`secr`) detector types**
+
+| **Category** | **Type (conceptual)** | **`secr` name** |
+|:----|:-----------------------------|:-------|
+| **Point** | Single-capture trap (1 animal at a time) | single |
+| | Multi-capture trap (multiple animals) | multi |
+| | Proximity detector (non-exclusive detection) | proximity |
+| | Count detector (multiple detections per occasion) | count |
+| | Binary proximity with cap of 1 detection | capped |
+| | Acoustic / signal-based detector | signal |
+| **Area** | Area search detector | polygon |
+| | Area search with independent subdetectors | polygonX |
+| **Line** | Linear search detector | transect |
+|  | Linear search with independent subdetectors | transectX |
+
+## Spatial capture-recapture (SCR): What we know / observe {.c}
+
+\begin{center}
+\includegraphics[width=\linewidth,height=2.35in,keepaspectratio]{figures/scr8.png}
+\end{center}
+
+## SCR: What we want to know: abundance / density {.c}
+
+\begin{center}
+\includegraphics[width=\linewidth,height=2.35in,keepaspectratio]{figures/scr9.png}
+\end{center}
+
+## SCR: How `secr` does it: Mask and buffer {.c}
+
+\begin{center}
+\includegraphics[width=\linewidth,height=2.35in,keepaspectratio]{figures/mask.png}
+\end{center}
+
+
+## SCR: How `secr` does it: Activity centres {.c}
+
+\begin{center}
+\includegraphics[width=\linewidth,height=2.35in,keepaspectratio]{figures/intensity.png}
+\end{center}
+
+
+## SCR: Models {.c}
+
+\begin{center}
+\includegraphics[width=\linewidth,height=2.35in,keepaspectratio]{figures/models.png}
+\end{center}
+\vspace{.6em}
+
+## SCR: Detection functions {.c}
+
+\begin{center}
+\includegraphics[width=\linewidth,height=2.35in,keepaspectratio]{figures/detfct.png}
+\end{center}
+\vspace{.6em}
+
+## SCR: Link functions$^*$ {.c}
+
+\begin{center}
+\includegraphics[width=\linewidth,height=2.35in,keepaspectratio]{figures/link.png}
+\end{center}
+\vspace{.6em}
+
+## Spatial capture-recapture: Data
+\vspace{0.35cm}
+\footnotesize
+
+```{r}
+#| eval: true
+#| echo: true
+
+head(traps_df, 3)
+head(caps_df, 3)
+```
+\normalsize
+
+\vspace{0.35cm}
+
+Note all data in this section is simulated, not real.
+
+## SCR: survey design
+
+- Spatial recaptures tell us **how detection probabilities change with distance**. This is critical to estimating abundance.
+- Arrays should cover **at least one home range**, preferably more, to
+  sample enough individuals and their movements.
+- Start with detector spacing of **1--2$\sigma$** to allow spatial recaptures;
+  use pilot data to check the species' movement scale and detection rate.
+
+```{r scr-survey-design, echo=FALSE, fig.width=7.2, fig.height=2.5, out.width="100%", out.height="1.45in"}
+local({
+  old_par <- par(mfrow = c(1, 3), mar = c(2.5, 0.3, 1.7, 0.3))
+  on.exit(par(old_par))
+  layouts <- list(seq(-0.6, 0.6, length.out = 4),
+                  seq(-6, 6, length.out = 4),
+                  seq(-2.6, 2.6, length.out = 4))
+  titles <- c("Too small", "Too spread out", "Just right")
+  captions <- c("Limited coverage", "Few spatial recaptures",
+                "Coverage + spatial recaptures")
+  angle <- seq(0, 2 * pi, length.out = 200)
+  for (j in seq_along(layouts)) {
+    xy <- expand.grid(x = layouts[[j]], y = layouts[[j]])
+    plot(NA, xlim = c(-7, 7), ylim = c(-7, 7), asp = 1,
+         axes = FALSE, ann = FALSE, xaxs = "i", yaxs = "i")
+    rect(min(xy$x), min(xy$y), max(xy$x), max(xy$y),
+         border = "grey60", lty = 2)
+    lines(2.45 * cos(angle), 2.45 * sin(angle),
+          col = "darkorange", lwd = 2)
+    points(xy$x, xy$y, pch = 19, col = "#008080", cex = 0.8)
+    title(main = titles[j], cex.main = 1.05)
+    mtext(captions[j], side = 1, line = 0.5, cex = 0.75)
+  }
+})
+```
+
+<!-- Source: Durbach, I., Micro-level survey design for secr, GSLEP/SLT:
+https://globalsnowleopard.org/wp-content/uploads/2020/09/How-to-choose-where-to-setup-camera-traps-survey-design_-.pdf
+Guidance: spacing 1--2 sigma and array coverage greater than one home range.
+These are starting rules, not guarantees of sufficient animals or recaptures.
+Original schematic: 16 detectors per panel; sigma = 1 in arbitrary units.
+Circles have radius 2.45 sigma (approximately the 95% contour for isotropic
+bivariate normal space use), not a hard limit on movement or detection.
+The right-hand grid spacing is approximately 1.73 sigma, and its footprint
+extends beyond the illustrated home range. The wide grid has 4 sigma spacing.
+A large array is not inherently bad: the middle panel is too sparse for this
+movement scale and fixed detector budget. All three are teaching diagrams,
+not simulated captures or optimized survey designs. -->
+
+## Spatial capture-recapture (SCR): Assumptions$^*$
+
+| # | Assumption | Description |
+|:--|:----------|:---------------------------|
+| 1 | Population closure | No births, deaths, immigration, or emigration occur during the sampling period. |
+| 2 | Fixed activity centres | Each individual has a stable activity centre that does not change during the study. |
+| 3 | Distance-dependent detection | Detection probability declines monotonically with distance from an individual’s activity centre. |
+| 4 | Independence of detections | Detection events are independent across individuals and sampling occasions (conditional on model parameters). |
+| 5 | Correct individual identification | All individuals are uniquely and correctly identified with no mis-classification errors. |
+
+## Spatial capture-recapture Terminology$^*$
+
+\footnotesize
+
+| Term | Definition |
+|:-------|:----------------------------------------|
+| Capture history | A record of detections for each individual across detectors and sampling occasions. |
+| Detector (trap) | A device or method used to detect individuals (e.g., camera trap, hair snare, acoustic recorder). |
+| Detector array | The spatial configuration of all detectors used in the study. |
+| Effort | Information on when and where detectors were active; used to correctly model detection probability. |
+| Activity centre | The latent (unobserved) central location of an individual’s home range, assumed fixed during the study. |
+| State space | The spatial region that contains all possible activity centres of individuals in the population. |
+| Mask | A discretized representation of the state space used in computation (grid of possible activity centre locations). |
+| Buffer | An added margin around the detector array to ensure the state space includes all individuals that could be detected. |
+

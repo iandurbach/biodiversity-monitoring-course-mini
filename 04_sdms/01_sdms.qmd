@@ -1,0 +1,1096 @@
+---
+title: "Species Distribution Models"
+subtitle: Biodiversity Monitoring Course, Module 4
+fontsize: 10pt
+format:
+  beamer:
+    theme: metropolis
+    incremental: false
+    slide-level: 2
+    pdf-engine: xelatex
+    keep-tex: false
+    fig-crop: false
+    syntax-highlighting: tango
+    include-in-header:
+      text: |
+        \definecolor{bl}{rgb}{0.16,0.32,0.75}
+        \definecolor{rd}{rgb}{0.82,0.1,0.26}
+        \setbeamertemplate{title page}{%
+          \centering
+          \includegraphics[width=0.27\textwidth,height=1.1cm,keepaspectratio]{../logos/01-standard-black-text.png}\hfill
+          \includegraphics[width=0.40\textwidth,height=1.1cm,keepaspectratio]{../logos/creem-long.png}\hfill
+          \includegraphics[width=0.19\textwidth,height=1.1cm,keepaspectratio]{../logos/SLT-Logo-2016-300dpi-Regular.jpg}\par
+          \vspace{0.35cm}
+          {\LARGE\inserttitle\par}
+          \vspace{0.35cm}
+          {\normalsize\insertsubtitle\par}
+          \vspace{0.25cm}
+          {\small UNDP-GEF Project\par}
+          \vspace{0.15cm}
+          {\small ``Integrated Community-based Management of High Value Mountain Ecosystems in Southern Kyrgyzstan for Multiple Benefits''\par}
+          \vfill
+          {\fontsize{6}{7}\selectfont
+          \textcopyright{} 2026 University of St Andrews (Centre for Research into Ecological and Environmental Modelling, CREEM), Snow Leopard Trust, developed within the framework of the UNDP-GEF Pamir-Alai project. Licensed under CC BY 4.0. You may share and adapt these materials if you keep this credit and indicate any changes.\par}
+        }
+classoption: c
+urlcolor: teal
+execute:
+  error: false
+---
+
+
+
+```{r setup, include=FALSE}
+library(terra)
+source("code/helpers.R")
+knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE,
+ fig.align="center", dev="pdf", fig.crop=FALSE, fig.width=7, fig.height=2.4,
+ out.width="85%", fig.path="figures/01-sdm-v3-")
+chunk_hook <- knitr::knit_hooks$get("chunk")
+knitr::knit_hooks$set(chunk=function(x,options) {
+ out <- chunk_hook(x,options)
+ if(isTRUE(options$echo)) paste0("\n\\footnotesize\n\n",out,
+                                "\n\\normalsize\n") else out
+})
+```
+
+## Learning outcomes
+
+<!-- Sources: Hijmans & Elith (2023), chapters 1–6; Franklin (2009), chapter 10; Kéry, Gardner & Monnerat (2010). Original teaching objectives. -->
+
+By the end of the lecture and practical, you should be able to:
+
+- Explain how occupancy, presence–absence and presence–background models relate.
+- Distinguish presences, survey absences and background records.
+- Choose a study region and useful environmental predictors.
+- Explain sampling bias and model complexity$^*$.
+- Evaluate predictions at withheld locations$^*$.
+- Fit, map and interpret a simple SDM in R.
+
+## Example 1: Otter surveys
+
+<!-- Sources: Local occupancy module; Franklin (2009), sections 4.2 and 4.5; Kéry, Gardner & Monnerat (2010), https://doi.org/10.1111/j.1365-2699.2010.02345.x . Original schematic using simulated occupancy-module transects. Only visit 1 of season 1 is retained here; no real otter records. -->
+
+In the occupancy module, we revisited river transects to estimate site use
+and detection. **What if we had only one visit per site?**
+
+```{r records, fig.height=2.6}
+network_demo <- read.csv("../03_occupancy/data/otter_network_simulated.csv")
+surveys_demo <- read.csv("../03_occupancy/data/otter_surveys_simulated.csv")
+# Retain 40 of the 100 surveyed sites without selecting on detections.
+subset_rows <- sort(c(seq(3,98,5), seq(1,96,5)))
+selected_demo <- network_demo$survey_row %in% subset_rows
+# Preserve the existing first-season presence sample used later in the deck.
+signs_demo <- rowSums(surveys_demo[,c("y.1","y.2","y.3")]) > 0
+presence_demo <- selected_demo & !is.na(network_demo$survey_row)
+presence_demo[presence_demo] <- signs_demo[network_demo$survey_row[presence_demo]]
+# The introductory comparison uses just visit 1 in both panels.
+presence_one_visit_demo <- selected_demo & !is.na(network_demo$survey_row)
+presence_one_visit_demo[presence_one_visit_demo] <-
+ surveys_demo$y.1[network_demo$survey_row[presence_one_visit_demo]] == 1
+plot_otter_records <- function(show_nondetections=TRUE, main='') {
+ par(mar=c(.2,.2,1.8,.2))
+ plot(NA,xlim=range(c(network_demo$x,network_demo$xend)),
+  ylim=range(c(network_demo$yy,network_demo$yend)),asp=1,
+  axes=FALSE,xlab='',ylab='',main=main,cex.main=.9)
+ with(network_demo,segments(x,yy,xend,yend,col='lightblue',lwd=3))
+ shown <- if(show_nondetections) selected_demo else presence_one_visit_demo
+ for(i in which(shown)) with(network_demo[i,],
+  segments(x,yy,xend,yend,col=if(presence_one_visit_demo[i]) rd else 'grey60',lwd=6))
+ labels <- c('River network','Signs detected',
+             if(show_nondetections) 'Surveyed: no signs')
+ cols <- c('lightblue',rd,if(show_nondetections) 'grey60')
+ legend('bottomleft',labels,col=cols,lwd=c(3,6,6)[seq_along(cols)],
+        bty='n',cex=.7)
+}
+par(mfrow=c(1,1))
+plot_otter_records(main='One visit at 40 river transects')
+```
+
+Many ecological surveys have one visit or no structured revisits.
+Opportunistic records may include revisits, but often with no structured design.
+
+## Example 1: Otter surveys
+
+Two potential datasets from the same river network
+
+<!-- Sources: Hijmans & Elith (2023), chapter 3, https://rspatial.org/sdm/3_sdm_absence-background.html ; Franklin (2009), sections 4.4.7 and 4.5.1. Same simulated one-visit records in both panels; right panel omits all nondetections without changing the presences. -->
+
+```{r record-types, fig.height=2.9, out.width="100%"}
+par(mfrow=c(1,2))
+plot_otter_records(TRUE,'Presence-absence')
+plot_otter_records(FALSE,'Presence-background')
+par(mfrow=c(1,1))
+```
+
+- **Left: presence–absence SDM.** Records from all surveyed sites;
+  absence = nondetection, not a known absence.
+- **Right: presence–background SDM.** Records presences only.
+
+Neither dataset tells us the true state of every river section.
+
+## What is a species distribution model?
+
+<!-- Sources: Hijmans & Elith (2023), chapter 1; Franklin (2009), sections 1.1 and 4.2. -->
+
+A model linking **species records** to **environmental conditions**.
+
+1. Describe conditions where the species was recorded.
+2. Estimate an association between records and environment.
+3. Apply that association to environmental maps.
+
+SDMs are popular because existing monitoring, field diaries and public
+observations can all contribute.
+
+Counts, repeat detections and sightings need different models and produce different kinds of predictions.
+
+SDMs typically do **not** account for detection.
+
+## A one-visit SDM does not separate use from detection
+
+<!-- Sources: MacKenzie et al. (2002), https://doi.org/10.1890/0012-9658(2002)083[2248:ESORWD]2.0.CO;2 ; Kéry, Gardner & Monnerat (2010), https://doi.org/10.1111/j.1365-2699.2010.02345.x , https://pubs.usgs.gov/publication/70037583 . Product assumes a single visit and no false-positive detections; p is conditional detection given occupancy, not the marginal probability of a recorded detection. -->
+
+With one visit, and no false-positive detections:
+
+$$
+P(\text{detected at a site}) = \psi \times p
+$$
+
+- $\psi$: probability the site is occupied or used.
+- $p$: probability of detecting signs, given that the site is used.
+- A conventional presence–absence SDM models the **combined outcome**.
+
+If detection varies with cover or search effort, those effects can become part of the fitted habitat relationship.
+Occupancy models separate the two processes. 
+Ignoring detection approximates occupancy only when detection
+is effectively perfect.
+
+## What determines where a species occurs?
+
+<!-- Sources: Franklin (2009), chapter 3; Dormann (2011), section 13.3. Original conceptual diagram, not a formal niche partition. -->
+
+```{r filters, fig.height=3.3}
+flowchart(c("Physical conditions: water, temperature, shelter",
+ "Resources and other species: prey, competitors, predators",
+ "Access and history: can animals reach and persist here?",
+ "Actual occurrence: part of potentially suitable habitat"))
+```
+
+An environmental model usually represents only some of these influences.
+
+## Example 2: Desert monitors
+
+<!-- Sources: ../slt_material/methodology in English/Monitor Lizard_AD.docx, sections 2.2–2.5; ../slt_material/Review of national methodologies.docx, section 6. Routes, sightings, tracks, burrows, photos and GPS are documented methods. Fixed segments, effort logging and the example records below are teaching adaptations, not actual survey results. -->
+
+Search routes for **desert monitors**
+(*Varanus griseus caspius*) can record animals, tracks and burrows.
+
+```{r local-monitor-records, fig.height=2.3, out.width="100%", fig.path="figures/01-sdm-v4-"}
+# Shared layout for four original survey schematics; all records are invented.
+local_panel <- function(title) {
+ par(mar=c(.2,.2,1.7,.2))
+ plot(NA,xlim=c(0,10),ylim=c(0,6),axes=FALSE,xlab='',ylab='',
+      main=title,cex.main=.9)
+}
+local_card <- function(headers, rows, note = "") {
+ local_panel('Example data retained')
+ xpos <- c(1.3,4.7,8.1)
+ rect(.1,1.25,9.9,5.6,col=adjustcolor(bl,.05),border=NA)
+ text(xpos,5.05,headers,font=2,cex=.8)
+ for(i in seq_along(rows)) {
+  y <- 4.05-(i-1)*.95
+  text(xpos,y,rows[[i]],cex=.8)
+ }
+ text(5,.7,note,cex=.7,col='grey35')
+}
+par(mfrow=c(1,2))
+local_panel('Divide the searched route into segments')
+segments(c(.8,3.6,6.4),3,c(3.2,6,9.2),3,lwd=12,
+         col=c(adjustcolor(rd,.3),'grey80',adjustcolor(rd,.3)))
+text(c(2,4.8,7.6),4.9,c('A','B','C'),font=2)
+points(c(2,7.6),rep(3,2),pch=c(17,16),col=rd,cex=1.5)
+text(c(2,4.8,7.6),1.7,c('Tracks','No detection','Animal'),cex=.85)
+local_card(c('Segment','Evidence','Detection'),
+ list(c('A','Tracks','1'),c('B','None','0'),c('C','Animal','1')))
+par(mfrow=c(1,1))
+```
+
+\small
+
+- **Keep:** GPS, date, evidence type, photo and search effort per segment.
+- **SDM input:** detection / nondetection for each searched segment;
+  a sightings-only file instead supplies presence locations.
+- **Issues:** signs need reliable identification; several tracks do not mean
+  several animals.
+
+\normalsize
+
+## Example 3: Ibex
+
+<!-- Sources: ../slt_material/methodology in English/ENG_A methodology on recording of sheep and goat_AD.docx, observation-point protocol and recording cards; ../slt_material/Review of national methodologies.docx, section 3. The protocol maps animal groups using bearings and distance, records count, sex/age, duration and visible areas, and warns that targeted plots give minimum counts not suitable for regional abundance extrapolation. Blocks and invented counts below are teaching adaptations. -->
+
+For **ibex** (*Capra sibirica*), observers scan mountain slopes
+and map groups using their direction and distance.
+
+```{r local-ibex-records, fig.height=2.3, out.width="100%", fig.path="figures/01-sdm-v4-"}
+par(mfrow=c(1,2))
+local_panel('Record animals in the visible survey block')
+polygon(c(.8,3.3,5.7,7.6,9.4),c(2,5.2,3.3,5.6,2),
+        col='grey93',border='grey65')
+polygon(c(4.8,1.4,8.5),c(.8,4.3,4.3),
+        col=adjustcolor(bl,.1),border=bl,lty=2)
+points(4.8,.8,pch=17,col=bl,cex=1.4)
+points(c(3.3,3.6,3.9,6.5,6.8),c(3.5,3.7,3.5,3.8,3.8),
+       pch=16,col=rd)
+text(2.4,4.6,'3 ibex',cex=.8); text(7.4,4.7,'2 ibex',cex=.8)
+text(5,.15,'Schematic: GPS at observer; map animal groups',cex=.7,col='grey35')
+local_card(c('Block','Count','Scan time'),
+ list(c('A','5','30 min'),c('B','0','30 min'),c('C','12','45 min')))
+par(mfrow=c(1,1))
+```
+
+\small
+
+- **Keep:** group locations, counts, date, visible area and observation time.
+- **SDM input:** counts simplified to detected / not detected per survey block. 
+- **Issues:** counts depend on visibility and effort.
+
+\normalsize
+
+## Example 4: Snow leopards
+
+<!-- Sources: ../slt_material/Fauna Species Bibliography and Conservation Actors in Kyrgyzstan.docx, snow leopard section and SLT actor description (camera-trap monitoring, individual-animal database); local occupancy module for detection histories. Weekly occasions, operational-effort records and the data below are an illustrative SDM adaptation, not an existing local camera dataset. -->
+
+Camera traps in local **snow leopard** (*Panthera uncia*) monitoring
+produce photographs with a station location, date and time.
+
+```{r local-camera-records, fig.height=2.1, out.width="100%", fig.path="figures/01-sdm-v4-"}
+par(mfrow=c(1,2))
+local_panel('One station, three weekly occasions')
+rect(.6,2.25,2.1,3.65,col=adjustcolor(bl,.15),border=bl,lwd=2)
+points(1.35,2.95,pch=1,col=bl,cex=2)
+arrows(2.3,3,3,3,length=.08,col=bl)
+for(i in 1:3) {
+ x <- 3.8+(i-1)*2.1
+ rect(x-.7,2.2,x+.7,3.8,col=if(i==2) 'grey93' else
+      adjustcolor(rd,.12),border=if(i==2) 'grey65' else rd)
+ text(x,4.65,paste('Week',i),cex=.8)
+ text(x,3,if(i==2) 'None' else 'Photo',cex=.85)
+}
+text(5,.65,'Schematic: station A operated throughout',cex=.7,col='grey35')
+local_card(c('Station','Weeks 1-3','Days active'),
+ list(c('A','1 / 0 / 1','7 / 7 / 7'),
+      c('B','0 / 0 / 0','7 / 7 / 7'),
+      c('C','0 / NA / 1','7 / 0 / 7')),
+ 'NA = camera not operating')
+par(mfrow=c(1,1))
+```
+
+\small
+
+- **Keep:** station GPS, dates, verified species ID and operating days.
+- **SDM input:** counts simplified to one detected / not-detected outcome per station and survey period.
+- **Issues:** failed cameras; many photographs of same animal; photo totals are not abundance.
+
+\normalsize
+
+## Example 5: Snow pigeons
+
+<!-- Sources: ../slt_material/methodology in English/Snow Pigeon_AD.docx, locations, recording card and data-processing sections; ../slt_material/Review of national methodologies.docx, section 5 and N12 (historical records compiled by the Kyrgyzstan birdwatcher community). Modern citizen-science contributions below are a proposed teaching example, not a claim of an available platform dataset. All plotted records are invented. -->
+
+For **snow pigeons** (*Columba leuconota*), combine historical sightings
+and birdwatcher records. Citizen-science photos could add new locations.
+
+```{r local-pigeon-records, fig.height=2.1, out.width="100%", fig.path="figures/01-sdm-v4-"}
+par(mfrow=c(1,2))
+local_panel('Sightings cluster where people travel')
+polygon(c(.5,2.5,4.2,6.5,8.2,9.5),c(1.4,4.8,3,5.5,3.4,1.4),
+        col='grey93',border='grey65')
+lines(c(.7,2.7,4.5,6.4,8.8),c(1.8,2.8,2.2,3.5,2.4),
+      lwd=2,lty=2,col=bl)
+points(c(2.7,3,6.2,6.5),c(2.8,3,3.5,3.7),pch=16,col=rd,cex=1.1)
+text(2.1,1,'Trail',col=bl,cex=.85)
+text(8,4.8,'No reports:\nnot an absence',cex=.8)
+text(5,.2,'Schematic sightings near accessible passes',cex=.7,col='grey35')
+local_card(c('Record','Source','Evidence'),
+ list(c('P1','Birdwatcher','Photo'),c('P2','Field diary','Description'),
+      c('P3','Historical','Locality')))
+par(mfrow=c(1,1))
+```
+
+\small
+
+- **Keep:** location, date, observer, identification evidence and location accuracy.
+- **SDM input:** verified presence locations.
+- **Issues:** no report means unknown not absence; trails bias coverage; possiblty imprecise locations on older records.
+
+\normalsize
+
+# Presence–absence vs presence–background SDMs
+
+## What does a distribution map represent?
+
+<!-- Sources: Franklin (2009), sections 4.2 and 4.5; Dormann (2011), section 13.3; Kéry, Gardner & Monnerat (2010), https://doi.org/10.1111/j.1365-2699.2010.02345.x ; local occupancy module's range-map discussion. Replaces the blanket "SDMs are not range maps" statement with interpretations tied to data and observation models. -->
+
+**Presence–absence SDM** 
+
+- Inputs are detections and nondetections.
+- Zero means not detected in the survey.
+- Predicts where the survey protocol is likely to record the species.
+- Missed detections can obscure the distribution.
+
+**Presence–background SDM** 
+
+- Inputs are detections only.
+- Zero means occurrence is unknown.
+- Predicts habitat suitability / potential habitat.
+- Suitable habitat can be empty (connectivity barriers, local extinction, etc).
+
+Only **Occupancy maps** estimates site use while allowing for missed detections.
+
+## Background is a choice; absences are survey outcomes
+
+<!-- Sources: Hijmans & Elith (2023), chapter 3, https://rspatial.org/sdm/3_sdm_absence-background.html ; Franklin (2009), sections 4.4.7 and 8.3; Merow, Smith & Silander (2013), sections III.A and III.D, https://doi.org/10.1111/j.1600-0587.2013.07872.x . Otter comparisons are illustrative. -->
+
+**Presence–absence SDM** 
+
+- Retain all surveyed sites and their outcomes.
+- A zero documents a completed search without detection.
+- Recorded unsuccessful searches contain information that background cannot replace.
+- Survey coverage, effort and detection affect prediction elsewhere.
+
+**Presence–background SDM** 
+
+- Zeros are sites sampled from the survey region. Can be a presence site or (more likely) an unvisited site.
+- These are known as "background" points.
+- Extent and background sampling affect fitted relationships.
+- More details coming later.
+
+## Presence–absence data need a survey
+
+<!-- Sources: Hijmans & Elith (2023), chapter 3, https://rspatial.org/sdm/3_sdm_absence-background.html ; Franklin (2009), sections 4.3–4.5 and 9.3; Fithian & Hastie (2013), sections 1.1–1.2 and 4.1, https://doi.org/10.1214/13-AOAS667 , https://arxiv.org/html/1207.6950v3 . Sampling correction concerns the probability of the observed survey outcome; it does not correct missed detection. -->
+
+Presence–absence records should describe **comparable surveyed sites**.
+
+- Define the same site size, season and search protocol.
+- Retain effort and survey conditions; no signs does not establish true absence.
+- Check that surveyed sites represent the region being mapped.
+- Mixing opportunistic presences with absence records from a different survey
+  can confuse habitat associations with differences in recording effort.
+
+## Same statistical models for different data types
+
+<!-- Sources: Hijmans & Elith (2023), sections 6.1–6.2 and chapter 3; Franklin (2009), sections 4.2 and 4.4.7; Dormann (2011), section 13.2.1; Merow et al. (2013), sections II–III, https://doi.org/10.1111/j.1600-0587.2013.07872.x . -->
+
+- SDM data is binary (1 = presence, 0 = absence/background), so many classification algorithms can be used.
+- Logistic regression, GAMs, tree models, neural networks are all widely used classical statistical or machine learning methods.
+- MaxEnt is an algorithm designed specifically for SDMs.
+- Algorithm choice is a fairly small part of the process
+- We focus on the full workflow, from survey design to reporting
+
+**This lecture focuses mainly on presence–background modelling**
+using GLMs and MaxEnt. 
+
+# Building a SDM
+
+## Overview
+
+<!-- Sources: SEEC SDM toolbox 1, "Eight steps to your own SDM" (overview slide). The talk's subsequent section slides use a different ordering for steps 2–4; here we retain the overview order requested for this lecture. -->
+
+Eight steps to a SDM:
+
+1. Occurrence data
+2. Environmental data
+3. Background samples
+4. Study extent
+5. Data cleaning
+6. Modelling
+7. Checking your model
+8. Projecting your model
+
+
+<!-- Section structure: SEEC 1, "Eight steps to your own SDM" overview. -->
+
+# 1. Occurrence data
+
+## Four records that mean different things
+
+<!-- Sources: SEEC 1, occurrence data; Hijmans & Elith (2023), chapter 3; Franklin (2009), sections 4.2 and 4.5. -->
+
+\small
+
+| Record | What we know |
+|:--|:--|
+| Verified presence | Species or diagnostic evidence recorded here |
+| Survey nondetection | Search completed, species not detected |
+| Credible absence | Evidence supports absence at this scale and time |
+| Background location | Environment for comparison; presence unknown |
+
+\normalsize
+\alert{An empty space in a presence database is not an absence.}
+
+## A small otter dataset for habitat mapping
+
+<!-- Sources: Original teaching adaptation of ../03_occupancy/data/otter_network_simulated.csv and otter_surveys_simulated.csv, first season only; Franklin (2009), chapters 4–5. Selection spans the existing cover gradient. This is a conceptual lecture example, not a fitted SDM or a revision of the current practical's data. -->
+
+- The occupancy exercise surveyed 100 of 200 fixed shoreline transects.
+- Here we retain **40 transects**, dispersed across the cover gradient.
+- Signs were recorded at **`r sum(presence_demo)`** of these during the first season. \alert{This is our dataset}.
+- Use those verified presences to illustrate a presence–background SDM.
+- Add mapped habitat and climate predictors across the whole river network.
+
+The target is **potentially suitable river habitat**, including unsurveyed reaches.
+
+The subset is for teaching and illustration. In a real project, non-detections and repeated visits should be retained and used.
+
+<!-- Section structure: SEEC 1, "Eight steps to your own SDM" overview. -->
+
+# 2. Environmental data
+
+## Choose predictors from ecological hypotheses
+
+<!-- Sources: SEEC 1, environmental data; Franklin (2009), chapters 3 and 5; Hijmans & Elith (2023), section 4.1; Davletbakov, Monitoring of otter_AD.docx; Review of national methodologies, section 7. Hypotheses, not established local effects. -->
+
+\small
+
+| Influence | Candidate predictor | Limitation |
+|:--|:--|:--|
+| Shelter and bank structure | Riparian cover (%) | Not a direct measure of safe dens |
+| River and climate conditions | Elevation; BIO6, BIO12 or BIO15 | Indirect; climate is not river flow |
+| Food | Fish information | May exist only at surveyed sites |
+| Disturbance | Human activity | Can also indicate observer access |
+
+\normalsize
+Mapping requires values at **unsurveyed locations too**.
+
+## A raster is a table laid out as a map
+
+<!-- Sources: SEEC 1, environmental data; Hijmans & Elith (2023), sections 4.1–4.2. Original grid. -->
+
+```{r raster}
+par(mar=c(.2,.2,1,.2)); plot(0,0,type='n',xlim=c(0,10),ylim=c(0,4),
+ axes=FALSE,xlab='',ylab='')
+for(j in 0:2) for(i in 0:3) {
+ v<-10+20*i+5*j
+ rect(i,j,i+1,j+1,col=adjustcolor(bl,v/100),border='white')
+ text(i+.5,j+.5,v)
+}
+text(2,3.5,'Cover (%)'); arrows(4.3,1.5,5.3,1.5,length=.12,lwd=2)
+text(7.5,2.7,'Each cell has a row of values')
+text(7.5,1.7,'Cell | Cover | Elevation',family='mono',cex=.9)
+text(7.5,.9,'A    |   55  |  2.4 km',family='mono',cex=.9)
+```
+
+Overlay presences and background to obtain their environmental values.
+
+## Climate predictors from BIOCLIM rasters
+
+<!-- Sources: SEEC 1 environmental data (BIOCLIM, variable selection); WorldClim official definitions https://www.worldclim.org/data/bioclim.html and WorldClim 2.1 baseline https://www.worldclim.org/data/worldclim21.html (checked 2026-10-08); Franklin (2009), chapter 5. Otter mechanisms below are hypotheses, not measured local effects. -->
+
+BIOCLIM is a dataset of 19 variables summarising monthly temperature and rainfall.
+
+\small
+
+| Candidate raster | What it may represent for otters |
+|:--|:--|
+| BIO6: minimum temperature of coldest month | Winter conditions and possible ice constraints |
+| BIO12: annual precipitation | Broad catchment water availability |
+| BIO15: precipitation seasonality | Seasonal variation in water supply |
+
+\normalsize
+Use a few ecologically justified layers alongside riparian cover and river habitat. Do not add all 19 variables automatically. 
+
+WorldClim 2.1 describes **1970–2000 climate**, not weather during a survey.
+
+## Match scale, accuracy and time
+
+<!-- Sources: Franklin (2009), sections 4.4.4, 4.5.2 and 5.4; Hijmans & Elith (2023), sections 2.6 and 4.1; SEEC 1 resolution. -->
+
+- **Grain:** the size of a map cell or survey unit.
+- **Extent:** the total region covered.
+- A 1 km location uncertainty cannot identify a 30 m habitat cell reliably.
+- A 500 m cell can include both riverbank and hillside.
+- Historic records may not match current vegetation or river conditions.
+- Resampling into smaller cells does not add ecological detail.
+
+## Prepare maps that align
+
+<!-- Sources: Hijmans & Elith (2023), section 4.1; terra project/compareGeom documentation. Clarifies CRS assignment in SEEC 3. -->
+
+All predictor layers need compatible:
+
+- Coordinate reference system (CRS).
+- Cell size, grid origin and extent.
+- Units, dates and definitions.
+- Missing-data and habitat masks.
+
+Transform coordinates into a new CRS and inspect rasters before extracting values.
+
+## Load climate maps, then extract values
+
+<!-- Sources: SEEC 1 environmental data; Hijmans & Elith (2023), sections 4.1–4.2; official WorldClim 2.1 GeoTIFF download documentation https://www.worldclim.org/data/worldclim21.html. Illustrative code only: these WorldClim files are not supplied with the lecture. The current practical retains its existing synthetic predictors pending revision. -->
+
+Download selected WorldClim GeoTIFF layers for the region.
+After aligning them with the habitat maps:
+
+```r
+climate <- terra::rast(c("wc2.1_30s_bio_6.tif",
+                         "wc2.1_30s_bio_12.tif"))
+names(climate) <- c("bio6", "bio12")
+values_at_sites <- terra::extract(climate, site_points)
+```
+
+- Each presence and background location receives climate values from its cell.
+- For a transect, decide whether to use its midpoint or a summary along the reach.
+- A coarse cell may not resolve fine riverbank habitat.
+
+<!-- Section structure: SEEC 1, "Eight steps to your own SDM" overview. -->
+
+# 3. Background samples
+
+## What does background contribute?
+
+<!-- Sources: SEEC 1, background samples; Hijmans & Elith (2023), chapter 3; Merow et al. (2013), section II and figure 1. Original numbers. -->
+
+Imagine 60% of records are in densely vegetated river sections.
+
+```{r available, fig.height=2.4}
+style(c(1,2))
+barplot(c(60,80),names.arg=c('Records','Available'),ylim=c(0,100),
+ col=c(rd,bl),ylab='Dense-cover share (%)',main='Dense cover is common')
+barplot(c(60,20),names.arg=c('Records','Available'),ylim=c(0,100),
+ col=c(rd,bl),ylab='Dense-cover share (%)',main='Dense cover is uncommon')
+```
+
+The same record percentage means something different in each landscape.
+Background describes **conditions available for comparison**, not absence.
+
+## Background is not known absence
+
+<!-- Sources: SEEC 1, background samples; Hijmans & Elith (2023), chapter 3; Merow et al. (2013), section III.A; Franklin (2009), section 8.3. -->
+
+Background points sample the chosen comparison region.
+
+- Some can fall in occupied places, including recorded cells.
+- They describe the environment; they do not prove non-occurrence.
+- **Pseudo-absences** are artificial comparison records; selection rules vary.
+- Sampling only very unsuitable places can make discrimination look easy.
+
+We label our response **presence/background**, not presence/absence.
+
+\alert{If you have reliable survey absences, **use them**}
+
+## Records also reveal where people look
+
+<!-- Sources: Hijmans & Elith (2023), section 2.7; Merow et al. (2013), section III.D; SEEC 2 bias. Original illustration. -->
+
+```{r bias}
+style(c(1,3)); x<-seq(0,10,length.out=100)
+plot(x,rep(.5,100),type='l',lwd=3,col=bl,ylim=c(0,1),
+ xlab='Distance from road',ylab='Relative level',main='Species use')
+plot(x,exp(-x/3),type='l',lwd=3,col=rd,ylim=c(0,1),
+ xlab='Distance from road',ylab='',main='Recording effort')
+plot(x,.5*exp(-x/3),type='l',lwd=3,col=bl,ylim=c(0,1),
+ xlab='Distance from road',ylab='',main='Expected records')
+```
+
+There is no road preference here. The records suggest one because survey
+effort declines away from roads.
+
+## Reduce bias before fitting
+
+<!-- Sources: SEEC 1, background samples and target-group sampling; Hijmans & Elith (2023), section 2.7; Merow et al. (2013), section III.D; SEEC 2 target-group sampling. -->
+
+- Collect records across geographical and environmental gradients.
+- Record search routes and effort, including unsuccessful searches.
+- Remove duplicate representations of the same evidence.
+- Consider background matching known recording effort.
+- Related-species records help only if their recording bias is comparable.
+
+Thinning dense records cannot create information from unvisited rivers.
+
+<!-- Section structure: SEEC 1, "Eight steps to your own SDM" overview. -->
+
+# 4. Study extent
+
+## The comparison region changes the question
+
+<!-- Sources: Hijmans & Elith (2023), chapter 3; Franklin (2009), sections 4.4.5 and 8.3; SEEC 1 extent. Original schematic. -->
+
+```{r domain}
+style(c(1,2))
+for(i in 1:2) {
+ plot(0,0,type='n',xlim=c(0,10),ylim=c(0,6),axes=FALSE,xlab='',ylab='',
+ main=c('Entire landscape','River corridor')[i])
+ rect(0,0,10,6,col='grey94',border='grey70')
+ xx<-seq(0,10,length.out=100); yy<-3+sin(xx)
+ lines(xx,yy,lwd=12,col='lightblue')
+ if(i==1) {set.seed(5); points(runif(90,0,10),runif(90,0,6),pch=16,col=bl,cex=.5)}
+ if(i==2) points(xx[seq(2,98,3)],yy[seq(2,98,3)],pch=16,col=bl,cex=.6)
+ points(c(2,4,7,9),3+sin(c(2,4,7,9)),col=rd,pch=16)
+}
+```
+
+Left: water-associated habitat versus everything else.
+Right: differences **among river environments**, our habitat-suitability question.
+
+## Define an ecologically defensible extent
+
+<!-- Sources: Franklin (2009), chapters 3–4 and 10; Merow et al. (2013), section III.A; SEEC 1 extent. -->
+
+- Use the decision area and plausible access by the species.
+- Consider catchment connections, barriers and the period represented.
+- Do not choose the extent only to maximise a performance score.
+- Separate the **fitting region** from a new prediction region.
+- Document and test reasonable alternative extents.
+
+<!-- Section structure: SEEC 1, "Eight steps to your own SDM" overview. -->
+
+# 5. Data cleaning
+
+## Presence records need quality control
+
+<!-- Sources: Hijmans & Elith (2023), sections 2.1–2.6; SEEC 1 cleaning; Davletbakov, Monitoring of otter_AD.docx; Review of national methodologies, section 7. -->
+
+Keep identification, coordinates, date, method and evidence together.
+
+- Check identification; flag uncertain signs and interview reports.
+- Inspect swapped coordinates, missing locations and duplicates.
+- Match location precision to the map resolution.
+- Match records' dates to the environmental data.
+
+Retain the original data and an explanation for every exclusion.
+
+## Correlated predictors repeat information
+
+<!-- Sources: SEEC 1, data cleaning; Dormann (2011), collinearity; Franklin (2009), section 5.5; Hijmans & Elith (2023), section 4.2. Original illustration. -->
+
+```{r correlation, fig.height=2.3}
+style(); x<-seq(1.8,3.4,length.out=60)
+plot(x,18-6*x+.2*sin(x*30),pch=16,col=bl,
+ xlab='Elevation (km)',ylab='Temperature (degrees C)',
+ main='Two measures of a similar gradient')
+```
+
+Including both can make their separate effects unstable.
+Choose the more useful ecological predictor. Check sensitivity to your choices.
+
+<!-- Section structure: SEEC 1, "Eight steps to your own SDM" overview. -->
+
+# 6. Modelling$^*$
+
+## A few model families
+
+<!-- Sources: Hijmans & Elith (2023), chapter 6; Franklin (2009), chapters 6–8; Dormann (2011), model type. -->
+
+| Approach | Basic idea |
+|:--|:--|
+| Envelope / BIOCLIM | Compare with conditions at known presences |
+| GLM | Fit a simple, specified relationship |
+| GAM | Fit smoother, more flexible curves |
+| Trees / forests | Split (if-then) conditions creates groups |
+| MaxEnt | Contrast presences with background |
+
+Data quality, study extent and evaluation matter for every method.
+We work through a **GLM**, then introduce **MaxEnt**.
+
+## Environmental envelopes: a starting idea
+
+<!-- Sources: Hijmans & Elith (2023), section 6.2; Franklin (2009), section 8.2. Rectangle is an envelope illustration, not the full BIOCLIM algorithm. -->
+
+```{r envelope, fig.height=2.4}
+style(); set.seed(12); a<-runif(35,25,90); b<-runif(35,2,3)
+plot(a,b,pch=16,col=bl,xlim=c(0,100),ylim=c(1.5,3.5),
+ xlab='Cover (%)',ylab='Elevation (km)',main='Illustrative environmental envelope')
+rect(min(a),min(b),max(a),max(b),border=rd,lwd=2)
+points(c(55,10),c(2.5,3.2),pch=8,cex=1.5)
+```
+
+Inside the recorded range is not necessarily occupied. Sparse records can
+miss part of the range; outliers can greatly widen it.
+
+## A regression links records to predictors
+
+<!-- Sources: Hijmans & Elith (2023), sections 5.1 and 6.3.1; Franklin (2009), section 6.3. -->
+
+A **generalised linear model (GLM)** can relate a binary response to habitat.
+
+With perfect presence–absence data, logistic regression models occurrence probability.
+
+With nearly all real-world presence–absence data, it distinguishes **recorded detections from recorded non-detections** .
+
+With presence–background data, it distinguishes **recorded detections from
+sampled background**.
+
+```r
+pb ~ cover + elev_km
+```
+
+`pb` is 1 for a presence record and 0 for a background row.
+
+## Allow a curve when ecology suggests one
+
+<!-- Sources: Hijmans & Elith (2023), section 6.3; Franklin (2009), section 6.3; Dormann (2011), model formulation. -->
+
+```r
+pb ~ cover + elev_km + I(elev_km^2)
+```
+
+- `cover`: an increasing or decreasing contribution on the model's link scale.
+- `elev_km`: an elevation contribution.
+- `I(elev_km^2)`: adds curvature, allowing an intermediate optimum.
+
+Interpret the **combined elevation curve**, not two coefficients separately.
+Adding terms requires more information.
+
+## Too much flexibility will fit noise
+
+<!-- Sources: Hijmans & Elith (2023), section 5.3; Franklin (2009), chapters 6–7 and 9; Dormann (2011), model simplification. Illustrations, not actual fits. -->
+
+```{r complexity}
+style(); x<-seq(0,1,length.out=100)
+plot(x,plogis(-3+6*x),type='l',lwd=3,col=bl,ylim=c(0,1),
+ xlab='Environmental gradient',ylab='Suitability',main='Illustrative fitted shapes')
+lines(x,pmin(.98,pmax(.02,plogis(-3+6*x)+.17*sin(45*x))),col=rd,lwd=2)
+legend('topleft',c('Simple pattern','Chasing fluctuations'),col=c(bl,rd),lwd=2,bty='n')
+```
+
+A close fit to training records can predict poorly elsewhere.
+
+Test flexibility using data withheld from model fitting
+
+## MaxEnt: the presence–background idea
+
+<!-- Sources: Hijmans & Elith (2023), section 6.4.1; Franklin (2009), section 8.3.4; Merow et al. (2013), sections II–III. -->
+
+MaxEnt compares conditions at presences with those available in the background.
+
+- It can combine simple and flexible predictor transformations.
+- **Regularisation** penalises complexity to reduce overfitting.
+- Background extent and recording bias still influence the result.
+- It cannot estimate missed detections from presences alone.
+
+Treat the output as **relative suitability** unless a stronger probability
+interpretation is justified (unlikely).
+
+## MaxEnt: what is being maximised?
+
+<!-- Sources: Merow, Smith & Silander (2013), section II.A.3 (entropy in geographical space), equations 4–6, and section III.C (regularisation); Franklin (2009), section 8.3.4. Simplified conceptual explanation; "least concentrated" assumes a uniform geographical baseline. -->
+
+**MaxEnt** means **maximum entropy**.
+
+1. Start with relative weights across the landscape. With uniform background,
+   equal-area cells initially have equal weights.
+2. Use the presences to constrain environmental averages: for example,
+   the model's weighted mean cover should resemble cover at recorded presences.
+3. Choose the **least concentrated distribution of weights** consistent with
+   that information, rather than adding unsupported detail.
+
+Regularisation discourages complex relationships.
+
+## MaxEnt: how the records change cell weights
+
+<!-- Sources: Merow, Smith & Silander (2013), section II.A.3 and equations 1, 5–6. Original four-cell calculation: uniform geographical baseline, one linear cover feature, exact mean constraint and no regularisation. An illustrative maximum-entropy distribution, not a fitted otter model. -->
+
+Four equal-area river cells have different cover. Suppose the mean cover
+at recorded presences is **70%**.
+
+```{r maxent-weights, fig.height=2.8}
+cover_cells <- c(10,30,60,90)
+# The maximum-entropy weights have an exponential form. Find the
+# coefficient that makes the predicted weighted mean cover exactly 70%.
+cell_weights <- function(b) {
+ w <- exp(b * (cover_cells/100)); w/sum(w)
+}
+b_demo <- uniroot(function(b) sum(cover_cells*cell_weights(b))-70,
+                  interval=c(0,20),tol=1e-10)$root
+weights_demo <- cell_weights(b_demo)
+stopifnot(abs(sum(weights_demo)-1)<1e-8,
+          abs(sum(cover_cells*weights_demo)-70)<1e-6)
+style(c(1,2)); par(mar=c(3.5,3.7,3,0.8))
+for(i in 1:2) {
+ w <- if(i==1) rep(.25,4) else weights_demo
+ barplot(w,names.arg=paste0(cover_cells,'%'),ylim=c(0,.65),
+  col=if(i==1) 'grey75' else bl,xlab='Cover in each river cell',
+  ylab='Relative cell weight',
+  main=c('Equal initial weights','Weights informed by presences')[i],cex.main=.9)
+ mtext(sprintf('Weighted mean cover: %.1f%%',sum(cover_cells*w)),
+       side=3,line=.25,cex=.8)
+}
+```
+
+Higher-cover cells gain weight, but all four remain possible record locations.
+Real MaxEnt models combine several environmental features.
+
+## MaxEnt settings are modelling decisions
+
+<!-- Sources: Merow et al. (2013), sections III.A–III.E; SEEC 1 MaxEnt; maxnet documentation. -->
+
+- **Features:** permitted shapes, such as linear or curved responses.
+- **Regularisation:** strength of the complexity penalty.
+- **Background:** environments used for comparison.
+- **Output scale:** alternative transformations of the fitted prediction.
+
+Defaults are a starting point. Compare and evaluate any choices you make (see next section).
+
+## Ensembles combine predictions
+
+<!-- Sources: Hijmans & Elith (2023), section 6.5; SEEC 3 slides 8–9 and 19–25; Franklin (2009), chapter 10. -->
+
+An **ensemble** combines predictions from several fitted models.
+
+- Agreement can reveal a stable pattern across those models.
+- Disagreement reveals sensitivity to modelling choices.
+- Evaluate the combined prediction, not only its components.
+- Models sharing biased data can agree and still be wrong.
+
+<!-- Section structure: SEEC 1, "Eight steps to your own SDM" overview. -->
+
+# 7. Checking your model$^*$
+
+## Model evaluation 
+
+<!-- Sources: SEEC 1, checking your model; Hijmans & Elith (2023), section 5.3 and chapter 7; Franklin (2009), chapter 9; Dormann (2011), performance. -->
+
+**Fitting:** can the model describe the records it was given?
+
+**Evaluation:** does it predict useful patterns at locations it has not seen?
+
+- Hold back data before selecting or tuning models.
+- Keep duplicate and nearby dependent observations together.
+- Match the test to the intended use: nearby gaps, new catchments, or another year.
+
+AIC is useful to compare models but does not evaluate transferability to new areas or contexts.
+
+## Random splits can make prediction look too easy
+
+<!-- Sources: Franklin (2009), sections 6.8 and 9.2; Hijmans & Elith (2023), chapter 7; Roberts et al. (2017). Original schematic. -->
+
+```{r split}
+style(c(1,2)); set.seed(22); x<-runif(90); y<-runif(90)
+z<-sample(c(bl,rd),90,TRUE)
+for(i in 1:2) {
+ plot(x,y,pch=16,col=if(i==1)z else ifelse(x<.65,bl,rd),axes=FALSE,
+ xlab='',ylab='',main=c('Random split','Spatial separation')[i])
+ if(i==2) abline(v=.65,lty=2)
+ legend('bottomleft',c('Training','Test'),col=c(bl,rd),pch=16,bty='n',cex=.8)
+}
+```
+
+Nearby sites share habitat, observers and animal movements.
+A spatial test better represents prediction into a new area.
+
+## One spatial split is only a first check
+
+<!-- Sources: Franklin (2009), chapter 9; Dormann (2011), external validation; Roberts et al. (2017). Explicit practical simplification. -->
+
+A first check could withhold a catchment or part of the landscape, with a buffer.
+
+For a real project:
+
+- Choose blocks using ecological dependence and the prediction task.
+- Repeat across several blocks or catchments.
+- Tune settings inside the training data.
+- Reserve independent field surveys for the strongest check.
+
+Spatial separation will not fix misidentification or sampling bias.
+
+## Building an evaluation metric (AUC): Step 1
+
+<!-- Sources: Franklin (2009), section 9.3, Table 9.3 and Figure 9.2; Hijmans & Elith (2023), section 5.3. Original illustrative scores for ten known presences and ten reliable absences; these are not background points. -->
+
+First suppose withheld sites have reliable **presence–absence** labels.
+Predict presence when the model score is **at least 0.5**.
+
+```{r rates, fig.height=2.2}
+roc_pres <- c(.95,.90,.85,.80,.75,.70,.65,.60,.40,.20)
+roc_abs <- c(.80,.60,.55,.50,.45,.35,.30,.25,.15,.10)
+cutoff_demo <- .5
+style(); par(mar=c(3.5,5,1.2,0.8))
+plot(NA,xlim=c(0,1),ylim=c(-.6,1.6),axes=FALSE,
+ xlab='Withheld model score',ylab='')
+rect(.5,-.6,1,1.6,col=adjustcolor(grn,.12),border=NA)
+axis(1); axis(2,at=c(0,1),labels=c('Absent','Present'),las=1)
+abline(v=.5,lty=2,col=grn,lwd=2)
+points(roc_pres,rep(1,10),pch=16,col=bl,cex=1.2)
+points(roc_abs,rep(0,10),pch=16,col=rd,cex=1.2)
+text(c(.25,.75),c(1.45,1.45),c('2 missed (FN)','8 correct (TP)'),cex=.85)
+text(c(.25,.75),c(-.45,-.45),c('6 correct (TN)','4 false positives (FP)'),cex=.85)
+```
+
+**TPR (sensitivity):** presences at/above cutoff / all presences = 8/10.
+
+**FPR (1 − specificity):** absences at/above cutoff / all absences = 4/10.
+
+## Building an evaluation metric (AUC): Step 2
+
+<!-- Sources: Franklin (2009), section 9.3, Figure 9.2; Hijmans & Elith (2023), section 5.3. Empirical ROC and trapezoidal area using the preceding presence–absence scores, with tied scores included together. AUC agrees with pairwise ranking, ties counted half. -->
+
+Vary the cutoff: each gives one pair of **FPR** and **TPR** values.
+The **ROC** (receiver operating characteristic) curve joins these points.
+
+```{r roc, fig.width=4.2, fig.height=3, out.width="48%"}
+cutoffs_demo <- c(Inf,sort(unique(c(roc_pres,roc_abs)),decreasing=TRUE))
+fpr_demo <- vapply(cutoffs_demo,function(t) mean(roc_abs>=t),numeric(1))
+tpr_demo <- vapply(cutoffs_demo,function(t) mean(roc_pres>=t),numeric(1))
+roc_area <- sum(diff(fpr_demo)*(head(tpr_demo,-1)+tail(tpr_demo,-1))/2)
+stopifnot(abs(roc_area-auc_pb(roc_pres,roc_abs))<1e-8)
+style(); par(pty='s',mar=c(3.7,3.7,.6,.6))
+plot(fpr_demo,tpr_demo,type='n',xlim=c(0,1),ylim=c(0,1),
+ xaxs='i',yaxs='i',xlab='FPR (1 - specificity)',ylab='TPR (sensitivity)')
+polygon(c(0,fpr_demo,1),c(0,tpr_demo,0),
+        col=adjustcolor(bl,.16),border=NA)
+abline(0,1,lty=2,col='grey50')
+lines(fpr_demo,tpr_demo,col=bl,lwd=2)
+points(.4,.8,pch=16,col=rd)
+text(.4,.8,'cutoff 0.5',pos=4,cex=.75,col=rd)
+text(.7,.22,sprintf('AUC = %.2f',roc_area),cex=.95,col=bl)
+```
+
+**AUC** is the shaded area under the ROC curve. The diagonal has AUC = 0.5;
+a curve nearer the upper-left corner indicates better discrimination.
+
+## Interpreting AUC
+
+<!-- Sources: Hijmans & Elith (2023), section 5.3; Franklin (2009), sections 9.3–9.4; Dormann (2011), performance (range clarified). -->
+
+Pick a withheld presence and background location at random.
+
+**AUC** describes how often the presence receives the higher score
+(ties count half).
+
+- **0.5:** no ranking ability relative to this background.
+- **1:** all withheld presences outrank all background locations.
+- Below 0.5 is possible: reversed ranking.
+
+With background, the ROC x-axis is the **fraction of background above the cutoff**,
+not a measured false-positive rate. It depends on the comparison region.
+
+Check more than a single score. Are low-scoring presences concentrated in one tributary or data source?
+
+# 8. Projecting your model
+
+## Thresholds turn a map into a decision
+
+<!-- Sources: Hijmans & Elith (2023), section 5.3; Franklin (2009), section 9.3; Dormann (2011), omission/commission costs. -->
+
+```{r thresholds, fig.height=2.4}
+style(); x<-seq(0,100,length.out=100)
+plot(x,plogis(-3+.06*x),type='l',lwd=3,col=bl,
+ xlab='Riparian cover (%)',ylab='Illustrative score')
+abline(h=c(.3,.6),col=c(grn,rd),lty=2,lwd=2)
+legend('topleft',c('Lower cutoff: more sites','Higher cutoff: fewer sites'),
+ col=c(grn,rd),lty=2,bty='n',cex=.85)
+```
+
+Lower cutoffs miss fewer known presences, but classify more habitat as suitable.
+The cutoff expresses a decision, not a biological range boundary.
+
+## Different errors have different consequences
+
+<!-- Sources: Franklin (2009), chapter 9; Hijmans & Elith (2023), chapter 3 and section 5.3; Dormann (2011), performance. -->
+
+\small
+
+| Error or outcome | Habitat-mapping consequence |
+|:--|:--|
+| Known presence below cutoff | Used habitat could be excluded from protection |
+| Unoccupied site above cutoff | Could be suitable habitat that is currently empty |
+| Background above cutoff | Unknown: it might actually be occupied |
+
+\normalsize
+Choose the rule using training data and the objective; measure performance
+on withheld data.
+
+Do not report background sites as confirmed false positives.
+
+## Prediction beyond the data is extrapolation
+
+<!-- Sources: Hijmans & Elith (2023), section 6.5; Franklin (2009), sections 9.2 and 10.2; SEEC 1 extrapolation; Dormann (2011), Figure 13.3 inspiration, newly drawn. -->
+
+```{r novel, fig.height=2.5}
+style(); x<-seq(0,100,length.out=100)
+plot(x,plogis(-3+.06*x),type='n',ylim=c(0,1),xlab='Cover (%)',ylab='Score')
+rect(70,0,100,1,col='grey92',border=NA)
+lines(x,plogis(-3+.06*x),col=bl,lwd=3)
+lines(x[x>70],plogis(-3+.06*70-.1*(x[x>70]-70)),col=rd,lwd=2,lty=2)
+rug(seq(5,70,length.out=25)); text(84,.15,'No training
+data',cex=.9)
+```
+
+Both curves agree where we have data and diverge beyond it.
+
+Novel **combinations** of familiar values can also be extrapolation.
+
+## A map needs an uncertainty companion
+
+<!-- Sources: Franklin (2009), chapters 9–10; Dormann (2011), section 13.2.3; SEEC 3 ensembles. -->
+
+Uncertainty arises from records, predictors, model choice and transfer.
+
+Useful companions include:
+
+- Locations of training and evaluation records.
+- Areas beyond the sampled environmental range.
+- Differences among models or resampled datasets.
+- Confidence intervals where the method provides them.
+
+A model confidence interval does not include every source of error.
+
+## Projecting habitat change is not forecasting animals
+
+<!-- Sources: Franklin (2009), chapters 1 and 10; Dormann (2011), section 13.3; SEEC 3 future projections. -->
+
+We can supply new environmental maps to an existing model.
+This assumes the fitted relationships remain useful.
+
+- Animals may not reach newly suitable rivers.
+- Barriers, prey and persecution may also change.
+- Future environments may lie outside the training range.
+- Different scenarios can produce different maps.
+
+\alert{A suitability change is not a measured population trend.}
+
+## From suitable habitat to an estimated distribution
+
+<!-- Sources: Franklin (2009), sections 4.2 and 4.5; Dormann (2011), section 13.3; local occupancy module, "Survey every site, or a subsample?" and "From occupancy probabilities to a range map". Conceptual comparison; no occupancy model is fitted in this lecture. -->
+
+A presence–background SDM identifies **habitat associated with records**.
+It cannot separate low site use from poor detection.
+
+For estimating current distribution, repeated-survey occupancy models
+usually provide stronger evidence when their assumptions are met:
+
+- Use detections **and nondetections** to estimate site use and detection.
+- Fit habitat relationships at a representative subset of transects.
+- Predict site use at unsurveyed sites using mapped covariates.
+
+Both approaches need good coverage and checks of spatial predictions.
+
+## What a useful SDM report contains
+
+<!-- Sources: Franklin (2009), chapter 10; Hijmans & Elith (2023), workflow. Original checklist. -->
+
+- Question, species, season, spatial unit and region.
+- Record sources, verification and exclusions.
+- Predictors, background and model settings.
+- Spatial evaluation design, results and limitations.
+- Continuous predictions, uncertainty and extrapolation flags.
+- A field validation plan and implications for habitat protection.
+
+Keep the data, code, and documented modelling choices so the work is reproducible.
+
+Next: fitting, mapping and evaluating an SDM in R.
+
+## Reading and resources
+
+<!-- Sources: Supplied PDFs; official terra and maxnet documentation. -->
+
+- [UCT SEEC toolbox seminars](https://science.uct.ac.za/seec/stats-toolbox-seminars/spatial-and-species-distribution-toolboxes)
+- Hijmans & Elith (2023). *Species Distribution Models*: R practical reference.
+- Franklin (2009). *Mapping Species Distributions*, chapters 3–5, 9–10.
+- Dormann (2011). *Modelling Species' Distributions*.
+- Merow, Smith & Silander (2013). *A practical guide to MaxEnt*.
+- WorldClim: [BIOCLIM variables](https://www.worldclim.org/data/bioclim.html) and climate rasters.
+
+

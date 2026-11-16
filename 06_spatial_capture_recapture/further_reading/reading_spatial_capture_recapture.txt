@@ -1,0 +1,85 @@
+SPATIAL CAPTURE–RECAPTURE
+=========================
+
+Bibliography and linked learning resources extracted from the course QMDs.
+QMDs reviewed:
+  01_spatial_caprecap.qmd
+  02_spatial_caprecap_practical.qmd
+Checked: 27 October 2026.
+
+LITERATURE
+----------
+
+[1] Efford, M. G. & Boulanger, J. (2019). Fast evaluation of study designs for spatially
+    explicit capture–recapture. Methods in Ecology and Evolution, 10(9), 1529-1535.
+    DOI: https://doi.org/10.1111/2041-210x.13239
+
+[2] Durbach, I., Borchers, D., Sutherland, C. & Sharma, K. (2021). Fast, flexible
+    alternatives to regular grid designs for spatial capture–recapture. Methods in
+    Ecology and Evolution, 12(2), 298-310.
+    DOI: https://doi.org/10.1111/2041-210x.13517
+
+[3] Nawaz, M. A., Khan, B. U., Mahmood, A., Younas, M., Din, J. u. & Sutherland, C.
+    (2021). An empirical demonstration of the effect of study design on density
+    estimations. Scientific Reports, 11(1), 13104.
+    DOI: https://doi.org/10.1038/s41598-021-92361-2
+
+[4] Efford, M. G. (2011). Estimation of population density by spatially explicit
+    capture–recapture analysis of data from area searches. Ecology, 92(12), 2202-2207.
+    DOI: https://doi.org/10.1890/11-0332.1
+
+[5] Johansson, Ö., Samelius, G., Wikberg, E., Chapron, G., Mishra, C. & Low, M. (2020).
+    Identification errors in camera-trap studies result in systematic population
+    overestimation. Scientific Reports, 10(1), 6393.
+    DOI: https://doi.org/10.1038/s41598-020-63367-z
+
+[6] Murphy, S. M., Adams, J. R., Waits, L. P. & Cox, J. J. (2021). Evaluating otter
+    reintroduction outcomes using genetic spatial capture–recapture modified for
+    dendritic networks. Ecology and Evolution, 11(21), 15047-15061.
+    DOI: https://doi.org/10.1002/ece3.8187
+
+[7] Sharma, K., Borchers, D., MacKenzie, D., Durbach, I., Sutherland, C., Nichols, J.,
+    Lovari, S., Zhi, L., Ale, S., Khan, A. A., Modaqiq, W., McCarthy, T., Alexander, J.
+    S. & Mishra, C. (2020). PAWS Guidelines. Global Snow Leopard and Ecosystem
+    Protection Program (GSLEP).
+    URL: https://globalsnowleopard.org/gslep-projects/paws/paws-resources/
+
+[8] Durbach, I. (n.d.). Micro-level survey design for secr. GSLEP / Snow Leopard Trust
+    survey-design cheatsheet.
+    URL: https://globalsnowleopard.org/wp-content/uploads/2020/09/How-to-choose-where-to-setup-camera-traps-survey-design_-.pdf
+
+[9] GSLEP (n.d.). Macro Level Design Tools. Population Assessment of the World’s Snow
+    Leopards (PAWS). Resources include K. Sharma’s occupancy-survey guides and I.
+    Durbach’s macro-level survey-design cheatsheet.
+    URL: https://globalsnowleopard.org/gslep-projects/paws/paws-resources/macro-level-design-tools/
+
+[10] Efford, M. G. (2025). The SECR Book: A Handbook of Spatially Explicit
+    Capture–Recapture Methods. Version 1.0.0. Zenodo.
+
+[11] Efford, M. (2025, January 26). Polygon and transect detectors in secr 5.2.
+    Technical vignette, 12 pp.
+    URL: https://www.otago.ac.nz/density/pdfs/secr-polygondetectors.pdf
+
+[12] Efford, M. (2026, October 11). secr 5.5 – spatially explicit capture–recapture in
+    R. Package overview vignette, 12 pp.
+    URL: https://cran.r-project.org/web/packages/secr/vignettes/secr-overview.pdf
+
+[13] Durbach, I. (n.d.). scr-workflow: Efficient workflows for SCR analyses. GitHub
+    repository and workshop materials.
+    URL: https://github.com/iandurbach/scr-workflow
+
+[14] Efford, M. G. (n.d.). DENSITY: Software for Spatially Explicit Capture–Recapture.
+    University of Otago. Documentation and worked examples.
+    URL: https://www.otago.ac.nz/density/
+
+[15] Efford, M. G. (n.d.). secrdesignapp 2.0. Interactive survey-design application,
+    University of Otago.
+    URL: https://www.stats.otago.ac.nz/secrdesignapp/
+
+[16] Davletbakov, A. T. (2026). Guidelines for monitoring the abundance and range of
+    Desert monitor (Varanus griseus caspius) within the Kyrgyz Republic. Bishkek.
+    Prepared with support from the GEF–UNDP Pamir Alai Project; commissioned by the
+    International Snow Leopard Trust.
+
+[17] Davletbakov, A. T. & Ilbirs Foundation (n.d.). Instructions for monitoring the
+    Central Asian otter (Lutra lutra seistanica Birula). Local field protocol.

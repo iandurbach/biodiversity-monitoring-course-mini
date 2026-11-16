@@ -1,0 +1,705 @@
+---
+title: Plot Sampling -- Practical
+subtitle: Biodiversity Monitoring Course, Module 2
+fontsize: 10pt
+format:
+  beamer:
+    theme: metropolis
+    incremental: false
+    slide-level: 2
+    pdf-engine: xelatex
+    syntax-highlighting: tango
+    include-in-header:
+      text: |
+        \usepackage{arydshln}
+        \usepackage{animate}
+        \usepackage{tikz}
+        \usetikzlibrary{arrows.meta,calc,positioning}
+        \definecolor{bl}{rgb}{0.16,0.32,0.75}
+        \definecolor{rd}{rgb}{0.82,0.1,0.26}
+        \definecolor{grn}{rgb}{0.55,0.71,0.0}
+        \providecommand{\hig}[1]{\textcolor{grn}{#1}}
+        \providecommand{\hir}[1]{\textcolor{rd}{#1}}
+        \newcommand{\surveygrid}{%
+          \draw[step=1,gray!55,thin] (0,0) grid (5,5);
+          \draw[thick] (0,0) rectangle (5,5);}
+        \newcommand{\plotnumbers}{%
+          \foreach \row in {0,...,4}{\foreach \col in {0,...,4}{%
+            \pgfmathtruncatemacro{\plotid}{5*\row+\col+1}
+            \node[font=\scriptsize,anchor=north west,text=gray!80!black]
+              at (\col+0.06,4.97-\row) {\plotid};}}}
+        \newcommand{\sampleplots}{%
+          \foreach \x/\y in {3/4,0/3,1/2,3/2,0/0}{%
+            \fill[bl!14] (\x,\y) rectangle +(1,1);
+            \draw[bl,thick] (\x,\y) rectangle +(1,1);}}
+        \newcommand{\countplotnumbers}{%
+          \foreach \row in {0,...,4}{\foreach \col in {0,...,4}{%
+            \pgfmathtruncatemacro{\plotid}{5*\row+\col+1}
+            \node[font=\scriptsize,anchor=south west,text=gray!80!black]
+              at (\col+0.06,4.03-\row) {\plotid};}}}
+        \newcommand{\sampletrees}{%
+          \foreach \x/\y in {3.3/4.65,3.65/4.3,0.3/3.65,0.65/3.3,1.5/2.4,3.5/2.4}{%
+            \fill[bl] (\x,\y) circle (0.07);}}
+        \newcommand{\othertrees}{%
+          \foreach \x/\y in {0.35/4.65,2.35/4.5,4.4/4.55,
+            1.4/3.5,2.3/3.6,2.65/3.25,3.4/3.5,4.5/3.4,
+            0.4/2.5,2.4/2.4,4.6/2.45,
+            0.3/1.7,0.6/1.3,1.45/1.4,2.45/1.5,3.5/1.4,4.5/1.5,
+            1.45/0.45,2.25/0.65,2.55/0.45,2.75/0.2,
+            3.2/0.7,3.55/0.75,3.35/0.4,3.75/0.4,3.55/0.15,4.55/0.4}{%
+            \fill[gray!65] (\x,\y) circle (0.07);}}
+        \setbeamertemplate{title page}{%
+          \centering
+          \includegraphics[width=0.27\textwidth,height=1.1cm,keepaspectratio]{../logos/01-standard-black-text.png}\hfill
+          \includegraphics[width=0.40\textwidth,height=1.1cm,keepaspectratio]{../logos/creem-long.png}\hfill
+          \includegraphics[width=0.19\textwidth,height=1.1cm,keepaspectratio]{../logos/SLT-Logo-2016-300dpi-Regular.jpg}\par
+          \vspace{0.35cm}
+          {\LARGE\inserttitle\par}
+          \vspace{0.35cm}
+          {\normalsize\insertsubtitle\par}
+          \vspace{0.25cm}
+          {\small UNDP-GEF Project\par}
+          \vspace{0.15cm}
+          {\small ``Integrated Community-based Management of High Value Mountain Ecosystems in Southern Kyrgyzstan for Multiple Benefits''\par}
+          \vfill
+          {\fontsize{6}{7}\selectfont
+          \textcopyright{} 2026 University of St Andrews (Centre for Research into Ecological and Environmental Modelling, CREEM), Snow Leopard Trust, developed within the framework of the UNDP-GEF Pamir-Alai project. Licensed under CC BY 4.0. You may share and adapt these materials if you keep this credit and indicate any changes.\par}
+        }
+classoption: t
+urlcolor: teal
+---
+
+## 1. Decide what you want to estimate
+
+:::: {.columns}
+::: {.column width="55%"}
+**Task:** estimate the number of living juniper trees in a mapped area.
+
+\vspace{1em}
+
+- Agree what counts as a tree: species, minimum size, etc.
+- Draw the survey boundary before selecting plots.
+- Choose the survey dates and obtain access permission.
+- State which area the final estimate will describe.
+
+
+:::
+::: {.column width="45%"}
+\centering
+\begin{tikzpicture}[scale=0.8]
+\fill[grn!10] (0,0) rectangle (5,5);
+\draw[thick] (0,0) rectangle (5,5);
+\draw[<->] (0,-0.3)--node[below,font=\small]{50 m}(5,-0.3);
+\draw[<->] (-0.3,0)--node[left,font=\small,rotate=90]{50 m}(-0.3,5);
+\node[align=center] at (2.5,2.5) {Training patch\\$A=2{,}500$ m$^2$\\$=0.25$ ha};
+\node[font=\scriptsize,align=center] at (2.5,-1.3) {Define the area first};
+\end{tikzpicture}
+:::
+::::
+
+## 2. Choose a plot size that you can count completely
+
+:::: {.columns}
+::: {.column width="55%"}
+**Simple option: fixed-size square plots.**
+
+\vspace{1em}
+
+- Use $10\times10$ m squares for this training exercise.
+- Mark corners using a tape and compass.
+- Search each plot in adjacent lanes so trees are counted once.
+- Agree what to do at boundaries e.g. include north/east edges, exclude south/west edges.
+
+\vspace{1em}
+
+Use the stem base to decide whether a tree is inside. Measure horizontal distances on slopes.
+:::
+::: {.column width="45%"}
+\centering
+\begin{tikzpicture}[scale=0.8,>=Stealth]
+\fill[grn!8] (0,0) rectangle (5,5);
+\draw[rd,dashed,thick] (0,5)--(0,0)--(5,0);
+\draw[bl,very thick] (0,5)--(5,5)--(5,0);
+\draw[bl!60,->,thick] (0.5,0.3)--(0.5,4.6)--(1.5,4.6)--(1.5,0.4)--(2.5,0.4)--(2.5,4.6)--(3.5,4.6)--(3.5,0.4)--(4.5,0.4)--(4.5,4.6);
+\foreach \x/\y in {0.8/2.7,2.2/3.4,3.6/1.8}{\fill[grn!70!black] (\x,\y) circle (0.09);}
+\node[above,font=\small] at (2.5,5) {North: include};
+\node[below,font=\small] at (2.5,0) {South: exclude};
+\node[font=\small] at (2.5,-0.85) {$10\times10$ m $=100$ m$^2$};
+\end{tikzpicture}
+:::
+::::
+
+## 3. Make a complete list of possible plots
+
+:::: {.columns}
+::: {.column width="55%"}
+Divide the training patch into **equal, non-overlapping squares**.
+
+\vspace{1em}
+
+- Give each square a unique ID, 1--25.
+- Save its corners or centre as GPS coordinates.
+- Include open areas as well as dense juniper stands.
+- In a real landscape, decide how to handle boundary plots before sampling.
+
+\vspace{1em}
+
+The calculation later assumes equal-area plots that cover the entire target area.
+:::
+::: {.column width="45%"}
+\centering
+\begin{tikzpicture}[scale=0.8]
+\surveygrid\plotnumbers
+\draw[<->] (0,-0.3)--node[below,font=\small]{50 m}(5,-0.3);
+\node[font=\scriptsize,align=center] at (2.5,-1.3) {Every square can be selected};
+\end{tikzpicture}
+:::
+::::
+
+## 4. Option A: select plots at random
+
+:::: {.columns}
+::: {.column width="55%"}
+**Simple random sampling** is often a simple, effective approach.
+
+\vspace{1em}
+
+- Put all 25 plot IDs into a bag, mix well and draw five without replacement.
+- Or use a computer random-number generator.
+- Save the selected list.
+- Visit those plots, including empty-looking ones.
+- Plan an efficient route after selecting the plots.
+
+\vspace{1em}
+
+Here the selected IDs are **4, 6, 12, 14 and 21**. Use a pilot study or power analysis to determine number of plots.
+
+:::
+::: {.column width="45%"}
+\centering
+\begin{tikzpicture}[scale=0.8]
+\sampleplots\surveygrid\plotnumbers
+\node[font=\small,text=bl] at (2.5,-0.45) {Blue = selected plots};
+\end{tikzpicture}
+:::
+::::
+
+## 5. Option B: sample separately within habitats
+
+:::: {.columns}
+::: {.column width="55%"}
+Use **stratified random sampling** when mapped habitats differ.
+
+- Draw habitat boundaries before seeing the counts.
+- Make a plot list for each habitat; select randomly within each list.
+- Start with effort proportional to habitat area.
+- Keep the habitat label with every count.
+
+Estimate each habitat total, then add:
+$$\hat N=\frac{n_1}{p_{c,1}}+\frac{n_2}{p_{c,2}}.$$
+Here $n_h$ is the tree count and $p_{c,h}$ the fraction of habitat $h$ surveyed.
+:::
+::: {.column width="45%"}
+\centering
+\begin{tikzpicture}[scale=0.8]
+\fill[grn!22] (0,2) rectangle (5,5);
+\fill[orange!15] (0,0) rectangle (5,2);
+\foreach \x/\y in {0/4,3/4,1/3,4/3,0/2,3/2,1/1,4/1,0/0,3/0}{\fill[bl!65] (\x,\y) rectangle +(1,1);}
+\surveygrid
+\draw[very thick] (0,2)--(5,2);
+\node[above,font=\small] at (2.5,5) {Woodland: 60\% of area};
+\node[below,font=\small] at (2.5,0) {Open slope: 40\% of area};
+\node[font=\scriptsize,align=center] at (2.5,-0.95) {Example: 6 woodland + 4 open plots};
+\end{tikzpicture}
+:::
+::::
+
+## 6. Option C: use a grid with a random start
+
+:::: {.columns}
+::: {.column width="55%"}
+**Systematic sampling** spreads effort across the area.
+
+\vspace{1em}
+
+- Choose the spacing before going to the field.
+- Randomly choose the grid's starting offset in both directions.
+- Here, use every second row and column of the plot grid.
+- Check that the pattern does not repeatedly follow roads or habitat bands.
+
+\vspace{1em}
+
+Selected IDs: **1, 3, 5, 11, 13, 15, 21, 23, 25**.
+
+:::
+::: {.column width="45%"}
+\centering
+\begin{tikzpicture}[scale=0.8]
+\fill[bl!14] (0,4) rectangle +(1,1);
+\draw[bl,thick] (0,4) rectangle +(1,1);
+\fill[bl!14] (2,4) rectangle +(1,1);
+\draw[bl,thick] (2,4) rectangle +(1,1);
+\fill[bl!14] (4,4) rectangle +(1,1);
+\draw[bl,thick] (4,4) rectangle +(1,1);
+\fill[bl!14] (0,2) rectangle +(1,1);
+\draw[bl,thick] (0,2) rectangle +(1,1);
+\fill[bl!14] (2,2) rectangle +(1,1);
+\draw[bl,thick] (2,2) rectangle +(1,1);
+\fill[bl!14] (4,2) rectangle +(1,1);
+\draw[bl,thick] (4,2) rectangle +(1,1);
+\fill[bl!14] (0,0) rectangle +(1,1);
+\draw[bl,thick] (0,0) rectangle +(1,1);
+\fill[bl!14] (2,0) rectangle +(1,1);
+\draw[bl,thick] (2,0) rectangle +(1,1);
+\fill[bl!14] (4,0) rectangle +(1,1);
+\draw[bl,thick] (4,0) rectangle +(1,1);
+\surveygrid\plotnumbers
+\node[font=\small,text=bl] at (2.5,-0.55) {Every second row and column};
+\end{tikzpicture}
+:::
+::::
+
+## 7. Run a pilot beforehand (optional)
+
+:::: {.columns}
+::: {.column width="55%"}
+Test the method in a small sample spanning the main conditions.
+
+\vspace{1em}
+
+- Time travel, plot marking, counting and data entry.
+- Check whether two observers apply the same counting rules.
+- Inspect variation in counts and missed trees.
+- Use those results to set plot size and the number of plots needed for useful precision.
+
+\vspace{1em}
+
+If the protocol changes, keep the pilot separate or recount its plots consistently.
+:::
+::: {.column width="45%"}
+\centering
+\begin{tikzpicture}[>=Stealth,node distance=0.6cm,
+  box/.style={draw=bl,fill=bl!8,rounded corners,text width=3.6cm,align=center,minimum height=0.8cm,font=\small}]
+\node[box] (a) {Try a few plots};
+\node[box,below=of a] (b) {Measure time and\\variation in counts};
+\node[box,below=of b] (c) {Agree plot size,\\effort and protocol};
+\node[box,below=of c] (d) {Select the main sample};
+\draw[->,thick] (a)--(b);\draw[->,thick] (b)--(c);\draw[->,thick] (c)--(d);
+\end{tikzpicture}
+:::
+::::
+
+## 8. Navigate to the selected plot
+
+:::: {.columns}
+::: {.column width="55%"}
+Take the plot list, offline map/GPS, compass, tape, markers and recording sheet.
+
+\vspace{1em}
+
+- Confirm the plot ID and location before counting.
+- Use measured distances to mark corners; GPS alone may be too imprecise for a 10 m plot.
+- Keep the selected location even if nearby trees look more interesting.
+- If access fails, record the reason and follow an agreed revisit/replacement rule.
+
+:::
+::: {.column width="45%"}
+\centering
+\begin{tikzpicture}[scale=0.8,>=Stealth]
+\sampleplots\surveygrid\plotnumbers
+\draw[bl,->,very thick] (-0.25,-0.4)--(0.5,0.5)--(1.5,2.5)--(3.5,2.5)--(3.5,4.5)--(0.5,3.5);
+\fill[rd] (4.5,1.5) circle (0.12);
+\node[font=\scriptsize,text=rd,align=center,fill=white] at (3.9,0.65) {Nearby trees do not\\change the plot list};
+\node[font=\small] at (2.5,-0.8) {Choose the route after the plots};
+\end{tikzpicture}
+:::
+::::
+
+## 9. Count every eligible tree once
+
+:::: {.columns}
+::: {.column width="55%"}
+Use the same search and counting rules in every plot.
+
+\vspace{1em}
+
+- One person searches; another records and checks boundaries.
+- Mark or track counted trees to prevent double counting.
+- Record the agreed unit.
+- Recheck a subset of plots independently for missed trees.
+
+\vspace{1em}
+
+\alert{Complete detection is important} If eligible trees are being missed, improve the search protocol before continuing.
+
+:::
+::: {.column width="45%"}
+\centering
+\begin{tikzpicture}[scale=0.8]
+\sampleplots\surveygrid\sampletrees
+\foreach \x/\y/\n in {3/4/2,0/3/2,1/2/1,3/2/1,0/0/0}{\node[anchor=north east,font=\scriptsize,text=bl] at (\x+0.98,\y+0.98) {\n};}
+\node[font=\scriptsize,align=center] at (2.5,-0.65) {Six trees counted in five plots\\White plots have not been surveyed};
+\end{tikzpicture}
+:::
+::::
+
+## 10. Record zeros and check the sheet each day
+
+:::: {.columns}
+::: {.column width="55%"}
+Use **one row per plot**, including completed plots with no trees.
+
+\vspace{1em}
+
+- Record ID, coordinates, date, observers, area and count.
+- Add habitat, completion status and access/protocol notes.
+- Use 0 only after a complete search finds no eligible trees.
+- Check missing IDs, duplicate rows and unusual counts before leaving the area.
+
+\vspace{1em}
+
+Save the original sheet and a digital backup. Keep counts for individual plots, not just the grand total.
+:::
+::: {.column width="45%"}
+\centering
+\begin{tikzpicture}[x=0.78cm,y=0.66cm]
+\fill[bl!15] (0,5) rectangle (5,6);
+\draw[gray] (0,0) rectangle (5,6);
+\foreach \y in {1,...,5}{\draw[gray!65] (0,\y)--(5,\y);}
+\draw[gray!65] (1.2,0)--(1.2,6);\draw[gray!65] (2.6,0)--(2.6,6);
+\node[font=\small] at (0.6,5.5) {ID};\node[font=\small] at (1.9,5.5) {Count};\node[font=\small] at (3.8,5.5) {Status};
+\foreach \id/\count/\y in {4/2/4.5,6/2/3.5,12/1/2.5,14/1/1.5,21/0/0.5}{
+\node[font=\small] at (0.6,\y) {\id};\node[font=\small] at (1.9,\y) {\count};\node[font=\small] at (3.8,\y) {Complete};}
+\draw[rd,thick] (1.9,0.5) ellipse (0.48 and 0.36);
+\node[font=\small,text=rd] at (2.5,-0.7) {Zero is a valid observation};
+\end{tikzpicture}
+:::
+::::
+
+## 11. Estimate abundance: simple random
+
+:::: {.columns}
+::: {.column width="55%"}
+**Option A:** five plots sampled from 25 equal-area plots.
+
+\vspace{1em}
+
+Mean count per plot:
+$$\bar y=\frac{2+2+1+1+0}{5}=1.2$$
+$$\hat N=1.2\times25=\alert{30\ \text{trees}}$$
+
+- Six trees counted in five plots.
+- Each sampled plot represents $25/5=5$ plots.
+- Include the zero count.
+:::
+::: {.column width="45%"}
+\centering
+\begin{tikzpicture}[scale=0.8]
+\fill[bl!14] (3,4) rectangle +(1,1);
+\draw[bl,thick] (3,4) rectangle +(1,1);
+\fill[bl!14] (0,3) rectangle +(1,1);
+\draw[bl,thick] (0,3) rectangle +(1,1);
+\fill[bl!14] (1,2) rectangle +(1,1);
+\draw[bl,thick] (1,2) rectangle +(1,1);
+\fill[bl!14] (3,2) rectangle +(1,1);
+\draw[bl,thick] (3,2) rectangle +(1,1);
+\fill[bl!14] (0,0) rectangle +(1,1);
+\draw[bl,thick] (0,0) rectangle +(1,1);
+\surveygrid\countplotnumbers
+\fill[bl] (3.3,4.65) circle (0.07);
+\fill[bl] (3.65,4.3) circle (0.07);
+\fill[bl] (0.3,3.65) circle (0.07);
+\fill[bl] (0.65,3.3) circle (0.07);
+\fill[bl] (1.5,2.4) circle (0.07);
+\fill[bl] (3.5,2.4) circle (0.07);
+\node[anchor=north east,font=\small,text=bl,fill=white,inner sep=1pt] at (3.96,4.96) {2};
+\node[anchor=north east,font=\small,text=bl,fill=white,inner sep=1pt] at (0.96,3.96) {2};
+\node[anchor=north east,font=\small,text=bl,fill=white,inner sep=1pt] at (1.96,2.96) {1};
+\node[anchor=north east,font=\small,text=bl,fill=white,inner sep=1pt] at (3.96,2.96) {1};
+\node[anchor=north east,font=\small,text=bl,fill=white,inner sep=1pt] at (0.96,0.96) {0};
+\node[font=\scriptsize,align=center] at (2.5,-0.85) {Blue numbers: observed counts\\Grey numbers: plot IDs};
+\end{tikzpicture}
+:::
+::::
+
+## 11. Estimate abundance: stratified random
+
+:::: {.columns}
+::: {.column width="55%"}
+**Option B:** randomly sampled \textcolor{red}{6} of \textcolor{red}{15} woodland plots and \textcolor{blue}{4} of \textcolor{blue}{10} open-slope plots.
+
+\vspace{1em}
+
+Woodland: counts **1, 2, 1, 1, 1, 1**.
+$$\hat N_W=\frac{7}{6}\times15=17.5$$
+
+Open slope: counts **1, 1, 0, 5**.
+$$\hat N_O=\frac{7}{4}\times10=17.5$$
+
+Add the two estimated totals:
+$$\hat N=17.5+17.5=\alert{35\ \text{trees}}$$
+
+:::
+::: {.column width="45%"}
+\centering
+\begin{tikzpicture}[scale=0.8]
+\fill[grn!12] (0,2) rectangle (5,5);
+\fill[orange!10] (0,0) rectangle (5,2);
+\fill[bl!14] (0,4) rectangle +(1,1);
+\draw[bl,thick] (0,4) rectangle +(1,1);
+\fill[bl!14] (3,4) rectangle +(1,1);
+\draw[bl,thick] (3,4) rectangle +(1,1);
+\fill[bl!14] (1,3) rectangle +(1,1);
+\draw[bl,thick] (1,3) rectangle +(1,1);
+\fill[bl!14] (4,3) rectangle +(1,1);
+\draw[bl,thick] (4,3) rectangle +(1,1);
+\fill[bl!14] (0,2) rectangle +(1,1);
+\draw[bl,thick] (0,2) rectangle +(1,1);
+\fill[bl!14] (3,2) rectangle +(1,1);
+\draw[bl,thick] (3,2) rectangle +(1,1);
+\fill[bl!14] (1,1) rectangle +(1,1);
+\draw[bl,thick] (1,1) rectangle +(1,1);
+\fill[bl!14] (4,1) rectangle +(1,1);
+\draw[bl,thick] (4,1) rectangle +(1,1);
+\fill[bl!14] (0,0) rectangle +(1,1);
+\draw[bl,thick] (0,0) rectangle +(1,1);
+\fill[bl!14] (3,0) rectangle +(1,1);
+\draw[bl,thick] (3,0) rectangle +(1,1);
+\surveygrid\countplotnumbers
+\fill[bl] (3.3,4.65) circle (0.07);
+\fill[bl] (3.65,4.3) circle (0.07);
+\fill[bl] (3.5,2.4) circle (0.07);
+\fill[bl] (0.35,4.65) circle (0.07);
+\fill[bl] (1.4,3.5) circle (0.07);
+\fill[bl] (4.5,3.4) circle (0.07);
+\fill[bl] (0.4,2.5) circle (0.07);
+\fill[bl] (1.45,1.4) circle (0.07);
+\fill[bl] (4.5,1.5) circle (0.07);
+\fill[bl] (3.2,0.7) circle (0.07);
+\fill[bl] (3.55,0.75) circle (0.07);
+\fill[bl] (3.35,0.4) circle (0.07);
+\fill[bl] (3.75,0.4) circle (0.07);
+\fill[bl] (3.55,0.15) circle (0.07);
+\node[anchor=north east,font=\small,text=bl,fill=white,inner sep=1pt] at (0.96,4.96) {1};
+\node[anchor=north east,font=\small,text=bl,fill=white,inner sep=1pt] at (3.96,4.96) {2};
+\node[anchor=north east,font=\small,text=bl,fill=white,inner sep=1pt] at (1.96,3.96) {1};
+\node[anchor=north east,font=\small,text=bl,fill=white,inner sep=1pt] at (4.96,3.96) {1};
+\node[anchor=north east,font=\small,text=bl,fill=white,inner sep=1pt] at (0.96,2.96) {1};
+\node[anchor=north east,font=\small,text=bl,fill=white,inner sep=1pt] at (3.96,2.96) {1};
+\node[anchor=north east,font=\small,text=bl,fill=white,inner sep=1pt] at (1.96,1.96) {1};
+\node[anchor=north east,font=\small,text=bl,fill=white,inner sep=1pt] at (4.96,1.96) {1};
+\node[anchor=north east,font=\small,text=bl,fill=white,inner sep=1pt] at (0.96,0.96) {0};
+\node[anchor=north east,font=\small,text=bl,fill=white,inner sep=1pt] at (3.96,0.96) {5};
+\draw[very thick] (0,2)--(5,2);
+\node[above,font=\small] at (2.5,5) {Woodland: 15 plots};
+\node[below,font=\small] at (2.5,0) {Open slope: 10 plots};
+\node[font=\scriptsize,align=center] at (2.5,-1.2) {Blue numbers: observed counts\\Grey numbers: plot IDs};
+\end{tikzpicture}
+:::
+::::
+
+## 11. Estimate abundance: systematic
+
+:::: {.columns}
+::: {.column width="55%"}
+**Option C:** nine plots on a grid with a random start.
+
+\vspace{1em}
+
+Ten trees counted in nine plots:
+$$\bar y=\frac{10}{9}\approx1.11$$
+$$\hat N=\frac{10}{9}\times25
+\approx\alert{28\ \text{trees}}$$
+
+\vspace{1em}
+
+- Same calculation as for simple random sampling.
+- Each sampled plot represents $25/9\approx2.8$ plots.
+
+:::
+::: {.column width="45%"}
+\centering
+\begin{tikzpicture}[scale=0.8]
+\fill[bl!14] (0,4) rectangle +(1,1);
+\draw[bl,thick] (0,4) rectangle +(1,1);
+\fill[bl!14] (2,4) rectangle +(1,1);
+\draw[bl,thick] (2,4) rectangle +(1,1);
+\fill[bl!14] (4,4) rectangle +(1,1);
+\draw[bl,thick] (4,4) rectangle +(1,1);
+\fill[bl!14] (0,2) rectangle +(1,1);
+\draw[bl,thick] (0,2) rectangle +(1,1);
+\fill[bl!14] (2,2) rectangle +(1,1);
+\draw[bl,thick] (2,2) rectangle +(1,1);
+\fill[bl!14] (4,2) rectangle +(1,1);
+\draw[bl,thick] (4,2) rectangle +(1,1);
+\fill[bl!14] (0,0) rectangle +(1,1);
+\draw[bl,thick] (0,0) rectangle +(1,1);
+\fill[bl!14] (2,0) rectangle +(1,1);
+\draw[bl,thick] (2,0) rectangle +(1,1);
+\fill[bl!14] (4,0) rectangle +(1,1);
+\draw[bl,thick] (4,0) rectangle +(1,1);
+\surveygrid\countplotnumbers
+\fill[bl] (0.35,4.65) circle (0.07);
+\fill[bl] (2.35,4.5) circle (0.07);
+\fill[bl] (4.4,4.55) circle (0.07);
+\fill[bl] (0.4,2.5) circle (0.07);
+\fill[bl] (2.4,2.4) circle (0.07);
+\fill[bl] (4.6,2.45) circle (0.07);
+\fill[bl] (2.25,0.65) circle (0.07);
+\fill[bl] (2.55,0.45) circle (0.07);
+\fill[bl] (2.75,0.2) circle (0.07);
+\fill[bl] (4.55,0.4) circle (0.07);
+\node[anchor=north east,font=\small,text=bl,fill=white,inner sep=1pt] at (0.96,4.96) {1};
+\node[anchor=north east,font=\small,text=bl,fill=white,inner sep=1pt] at (2.96,4.96) {1};
+\node[anchor=north east,font=\small,text=bl,fill=white,inner sep=1pt] at (4.96,4.96) {1};
+\node[anchor=north east,font=\small,text=bl,fill=white,inner sep=1pt] at (0.96,2.96) {1};
+\node[anchor=north east,font=\small,text=bl,fill=white,inner sep=1pt] at (2.96,2.96) {1};
+\node[anchor=north east,font=\small,text=bl,fill=white,inner sep=1pt] at (4.96,2.96) {1};
+\node[anchor=north east,font=\small,text=bl,fill=white,inner sep=1pt] at (0.96,0.96) {0};
+\node[anchor=north east,font=\small,text=bl,fill=white,inner sep=1pt] at (2.96,0.96) {3};
+\node[anchor=north east,font=\small,text=bl,fill=white,inner sep=1pt] at (4.96,0.96) {1};
+\node[font=\scriptsize,align=center] at (2.5,-0.85) {Blue numbers: observed counts\\Grey numbers: plot IDs};
+\end{tikzpicture}
+:::
+::::
+
+## 12. Report uncertainty: simple random
+
+:::: {.columns}
+::: {.column width="57%"}
+
+\footnotesize
+
+```{r practical-ci-srs, echo=TRUE, message=FALSE, results='hide'}
+library(survey)
+srs <- data.frame(
+  count = c(2, 2, 1, 1, 0),
+  M = 25, w = 25/5)
+d_srs <- svydesign(ids = ~1,
+  weights = ~w, fpc = ~M, data = srs)
+fit_srs <- svytotal(~count, d_srs)
+coef(fit_srs)
+confint(fit_srs, df = degf(d_srs))
+```
+
+\vspace{1em}
+\footnotesize
+
+`M` counts available plots; `w` is the number of plots each sampled plot represents. `fpc` accounts for sampling without replacement.
+
+\vspace{1em}
+\normalsize
+
+**30 trees; approximate 95% CI: 7--53.**
+:::
+::: {.column width="43%"}
+\centering
+\begin{tikzpicture}[x=0.065cm,y=0.85cm]
+\draw[->] (0,0)--(62,0);
+\foreach \x in {0,15,30,45,60}{\draw (\x,0.08)--(\x,-0.08) node[below,font=\scriptsize]{\x};}
+\draw[bl,very thick] (6.770594,1.3)--(53.229406,1.3);
+\draw[bl,thick] (6.770594,1.05)--(6.770594,1.55);
+\draw[bl,thick] (53.229406,1.05)--(53.229406,1.55);
+\fill[bl] (30,1.3) circle (2pt);
+\node[above,font=\small] at (30,1.65) {Estimate: 30};
+\node[font=\small] at (30,2.7) {Approximate 95\% CI};
+\node[font=\small] at (30,-0.8) {Juniper trees in the patch};
+\node[font=\scriptsize,align=center,text width=3.7cm] at (30,-2.0) {Five plots illustrate the calculation. Plan more plots for a reliable interval.};
+\end{tikzpicture}
+:::
+::::
+
+## 12. Report uncertainty: stratified random
+
+:::: {.columns}
+::: {.column width="57%"}
+\footnotesize
+
+```{r practical-ci-stratified, echo=TRUE, message=FALSE, results='hide'}
+strat <- data.frame(
+  count = c(1,2,1,1,1,1,1,1,0,5),
+  habitat = c("W","W","W","W","W","W",
+              "O","O","O","O"),
+  M = c(15,15,15,15,15,15,10,10,10,10),
+  Msmp = c(6,6,6,6,6,6,4,4,4,4))
+strat$w <- strat$M / strat$Msmp
+d_strat <- svydesign(ids = ~1,
+  strata = ~habitat, weights = ~w,
+  fpc = ~M, data = strat)
+fit_strat <- svytotal(~count, d_strat)
+coef(fit_strat)
+confint(fit_strat, df = degf(d_strat))
+```
+
+\vspace{1em}
+\footnotesize
+
+Tell R which counts belong to woodland (**W**) and open slope (**O**). `M` is the number of available plots **in each habitat**. R combines the two habitat totals and their uncertainty.
+
+\vspace{1em}
+\normalsize
+
+**35 trees; approximate 95% CI: 15--55.**
+:::
+::: {.column width="43%"}
+\centering
+\begin{tikzpicture}[x=0.065cm,y=0.85cm]
+\draw[->] (0,0)--(62,0);
+\foreach \x in {0,15,30,45,60}{\draw (\x,0.08)--(\x,-0.08) node[below,font=\scriptsize]{\x};}
+\draw[bl,very thick] (14.6993,1.3)--(55.3007,1.3);
+\draw[bl,thick] (14.6993,1.05)--(14.6993,1.55);
+\draw[bl,thick] (55.3007,1.05)--(55.3007,1.55);
+\fill[bl] (35,1.3) circle (2pt);
+\node[above,font=\small] at (30,1.65) {Estimate: 35};
+\node[font=\small] at (30,2.7) {Approximate 95\% CI};
+\node[font=\small] at (30,-0.8) {Juniper trees in the patch};
+\node[font=\scriptsize,align=center,text width=3.7cm] at (30,-2.0) {Keep habitat labels and calculate uncertainty within each habitat before combining.};
+\end{tikzpicture}
+:::
+::::
+
+## 12. Report uncertainty: systematic (approximation)
+
+:::: {.columns}
+::: {.column width="57%"}
+
+\footnotesize
+
+```{r practical-ci-systematic, echo=TRUE, message=FALSE, results='hide'}
+systematic <- data.frame(
+  id = c(1, 3, 5, 11, 13, 15, 21, 23, 25),
+  count = c(1, 1, 1, 1, 1, 1, 0, 3, 1),
+  M = 25, w = 25/9)
+d_sys <- svydesign(ids = ~1,
+  weights = ~w, fpc = ~M,
+  data = systematic)
+fit_sys <- svytotal(~count, d_sys)
+coef(fit_sys)
+confint(fit_sys, df = degf(d_sys))
+```
+
+\footnotesize
+
+This is an **approximation** assuming simple random sampling; it does not account for the dependence among plots on a systematic grid.
+
+\vspace{1em}
+
+**28 trees; approximate 95% CI: 16--40.**
+
+:::
+::: {.column width="43%"}
+\centering
+\begin{tikzpicture}[x=0.065cm,y=0.85cm]
+\draw[->] (0,0)--(62,0);
+\foreach \x in {0,15,30,45,60}{\draw (\x,0.08)--(\x,-0.08) node[below,font=\scriptsize]{\x};}
+\draw[bl,very thick] (15.75987,1.3)--(39.79569,1.3);
+\draw[bl,thick] (15.75987,1.05)--(15.75987,1.55);
+\draw[bl,thick] (39.79569,1.05)--(39.79569,1.55);
+\fill[bl] (27.777778,1.3) circle (2pt);
+\node[above,font=\small] at (30,1.65) {Estimate: 28};
+\node[font=\small] at (30,2.7) {Approximate 95\% CI};
+\node[font=\small] at (30,-0.8) {Juniper trees in the patch};
+\node[font=\scriptsize,align=center,text width=3.7cm] at (30,-2.0) {Report that the CI uses an SRS approximation. Its accuracy depends on the spatial pattern.};
+\end{tikzpicture}
+:::
+::::

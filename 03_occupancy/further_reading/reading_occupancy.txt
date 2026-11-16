@@ -1,0 +1,54 @@
+OCCUPANCY MODELLING
+===================
+
+Bibliography and linked learning resources extracted from the course QMDs.
+QMDs reviewed:
+  01_occupancy.qmd
+  02_occupancy_practical.qmd
+Checked: 27 October 2026.
+
+LITERATURE
+----------
+
+[1] MacKenzie, D. I., Nichols, J. D., Royle, J. A., Pollock, K. H., Bailey, L. L. &
+    Hines, J. E. (2018). Occupancy Estimation and Modeling: Inferring Patterns and
+    Dynamics of Species Occurrence, 2nd ed. Academic Press. ISBN 978-0-12-407197-1.
+
+[2] Kéry, M. & Royle, J. A. (2016). Applied Hierarchical Modeling in Ecology: Analysis
+    of Distribution, Abundance and Species Richness in R and BUGS. Volume 1: Prelude and
+    Static Models. Academic Press. ISBN 978-0-12-801378-6.
+
+[3] Bailey, L. L. & Adams, M. J. (2005). Occupancy Models to Study Wildlife. U.S.
+    Geological Survey Fact Sheet 2005–3096, 2 pp.
+    DOI: https://doi.org/10.3133/fs20053096
+    URL: https://pubs.usgs.gov/fs/2005/3096/fs20053096.pdf
+
+[4] Rota, C. T., Fletcher Jr, R. J., Dorazio, R. M. & Betts, M. G. (2009). Occupancy
+    estimation and the closure assumption. Journal of Applied Ecology, 46(6), 1173-1181.
+    DOI: https://doi.org/10.1111/j.1365-2664.2009.01734.x
+
+[5] MacKenzie, D. I., Nichols, J. D., Hines, J. E., Knutson, M. G. & Franklin, A. B.
+    (2003). Estimating site occupancy, colonization, and local extinction when a species
+    is detected imperfectly. Ecology, 84(8), 2200-2207.
+    DOI: https://doi.org/10.1890/02-3090
+
+[6] Barata, I. M., Griffiths, R. A. & Ridout, M. S. (2017). The power of monitoring:
+    optimizing survey designs to detect occupancy changes in a rare amphibian
+    population. Scientific Reports, 7(1), 16491.
+    DOI: https://doi.org/10.1038/s41598-017-16534-8
+
+[7] Bauder, J. M., Stevenson, D. J., Sutherland, C. S. & Jenkins, C. L. (2017).
+    Occupancy of Potential Overwintering Habitat on Protected Lands by Two Imperiled
+    Snake Species in the Coastal Plain of the Southeastern United States. Journal of
+    Herpetology, 51(1), 73-88.
+    DOI: https://doi.org/10.1670/15-064
+
+[8] Johnston, A., Fink, D., Hochachka, W. M. & Kelling, S. (2018). Estimates of observer
+    expertise improve species distributions from citizen science data. Methods in
+    Ecology and Evolution, 9(1), 88-97.
+    DOI: https://doi.org/10.1111/2041-210x.12838
+
+[9] Fiske, I. & Chandler, R. (2011). unmarked: An R Package for Fitting Hierarchical
+    Models of Wildlife Occurrence and Abundance. Journal of Statistical Software,
+    43(10), 1–23.
+    DOI: https://doi.org/10.18637/jss.v043.i10

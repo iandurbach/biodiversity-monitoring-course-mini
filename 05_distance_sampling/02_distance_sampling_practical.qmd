@@ -1,0 +1,906 @@
+---
+title: Distance Sampling -- Practical
+subtitle: Biodiversity Monitoring Course, Module 5
+fontsize: 10pt
+format:
+  beamer:
+    theme: metropolis
+    incremental: false
+    slide-level: 2
+    pdf-engine: xelatex
+    syntax-highlighting: tango
+    include-in-header:
+      text: |
+        \usepackage{tikz}
+        \usetikzlibrary{arrows.meta,positioning,calc}
+        \definecolor{bl}{rgb}{0.16,0.32,0.75}
+        \definecolor{rd}{rgb}{0.82,0.1,0.26}
+        \definecolor{grn}{rgb}{0.55,0.71,0.0}
+        \providecommand{\hib}[1]{\textcolor{bl}{#1}}
+        \providecommand{\hir}[1]{\textcolor{rd}{#1}}
+        \providecommand{\hig}[1]{\textcolor{grn}{#1}}
+        \setbeamertemplate{title page}{%
+          \centering
+          \includegraphics[width=0.27\textwidth,height=1.1cm,keepaspectratio]{../logos/01-standard-black-text.png}\hfill
+          \includegraphics[width=0.40\textwidth,height=1.1cm,keepaspectratio]{../logos/creem-long.png}\hfill
+          \includegraphics[width=0.19\textwidth,height=1.1cm,keepaspectratio]{../logos/SLT-Logo-2016-300dpi-Regular.jpg}\par
+          \vspace{0.35cm}
+          {\LARGE\inserttitle\par}
+          \vspace{0.35cm}
+          {\normalsize\insertsubtitle\par}
+          \vspace{0.25cm}
+          {\small UNDP-GEF Project\par}
+          \vspace{0.15cm}
+          {\small ``Integrated Community-based Management of High Value Mountain Ecosystems in Southern Kyrgyzstan for Multiple Benefits''\par}
+          \vfill
+          {\fontsize{6}{7}\selectfont
+          \textcopyright{} 2026 University of St Andrews (Centre for Research into Ecological and Environmental Modelling, CREEM), Snow Leopard Trust, developed within the framework of the UNDP-GEF Pamir-Alai project. Licensed under CC BY 4.0. You may share and adapt these materials if you keep this credit and indicate any changes.\par}
+        }
+classoption: c
+urlcolor: teal
+---
+
+```{r setup, include=FALSE}
+# Field context: Davletbakov (2026), Monitor Lizard_AD.docx;
+# Davletbakov & Koshkin (2026), ENG_Golden Eagle_Methodological recommendations_AD.docx;
+# Review of national methodologies.docx, sections 4 and 6, in ../slt_material.
+# Tutorials informed by CREEM online-course modules 2, 3, 5, 6 and 8.
+# All maps, survey records and numerical results are hypothetical/simulated.
+# No source protocol is presented as an existing distance sampling design.
+library(Distance)
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE,
+                      fig.align = "center", dev = "pdf", fig.width = 6.5,
+                      fig.height = 2.5, out.width = "85%",
+                      fig.path = "figures/02-distance-", size = "footnotesize")
+chunk_hook <- knitr::knit_hooks$get("chunk")
+knitr::knit_hooks$set(chunk = function(x, options) {
+  out <- chunk_hook(x, options)
+  if (options$echo && options$size == "footnotesize")
+    paste0("\n\\footnotesize\n\n", out, "\n\\normalsize\n") else out
+})
+bl <- rgb(0.16, 0.32, 0.75)
+rd <- rgb(0.82, 0.1, 0.26)
+grn <- rgb(0.55, 0.71, 0.0)
+style_plot <- function(mfrow = c(1, 1)) {
+  par(mfrow = mfrow, mar = c(3.5, 3.6, 1.5, 0.7),
+      mgp = c(2.2, 0.65, 0), las = 1, bty = "l", cex = 0.9)
+}
+compact_results <- function(x, digits = 1) {
+  knitr::kable(x[, c("Estimate", "lcl", "ucl", "cv")], digits = c(digits, digits, digits, 2),
+               col.names = c("Estimate", "Lower 95% CI", "Upper 95% CI", "CV"),
+               row.names = FALSE, format = "latex", booktabs = TRUE)
+}
+fmt <- function(x, digits = 1) format(round(x, digits), nsmall = digits, big.mark = ",")
+preview_m <- read.csv("data/monitor_line_transects.csv")
+preview_e <- read.csv("data/golden_eagle_point_transects.csv")
+```
+
+## Two hypothetical applications
+
+\small
+
+| | Desert monitor | Golden eagle |
+|:--|:--|:--|
+| Method | Walking line transects | Stationary point transects |
+| Distance | Perpendicular to line | Radial from point |
+| Main exercise | Full R walkthrough | Adapt the same workflow |
+| Target | Available, above-ground animals | Available birds at a snapshot |
+
+\vspace{0.2cm}
+All records, maps and numerical results are **simulated teaching examples**.
+They are not estimates for Kyrgyzstan, and the illustrated effort is not a recommendation.
+
+We adapt parts of the current monitoring protocols; the distance sampling
+surveys described here are hypothetical additions.
+
+# Case study 1: Desert monitors
+
+## Start with the existing monitor protocol
+
+:::: {.columns}
+::: {.column width="55%"}
+\small
+The protocol combines:
+
+- Visual routes through likely habitats, using a 20--30 m observation strip.
+
+- Date, GPS, count, age, behaviour, habitat and photographs.
+
+- Separate records of tracks and burrows.
+
+:::
+::: {.column width="45%"}
+\begin{center}
+\includegraphics[width=\textwidth,height=0.48\textheight,keepaspectratio]{figures/desert-monitor-davletbakov.jpg}
+
+\footnotesize Photo: A. Davletbakov
+\end{center}
+:::
+::::
+
+For distance sampling, add **representative lines, measured effort and distances**.
+
+\footnotesize
+Source: Davletbakov (2026).
+
+## Define the population and the survey boundary
+
+**Training question:** how many monitors are available above ground during
+our standardised spring survey window?
+
+:::: {.columns}
+::: {.column width="57%"}
+\small
+- Map one hypothetical **100 km$^2$** region of southern foothill habitat.
+
+- Define eligible animals, e.g. identifiable desert monitors of all ages.
+
+- Choose comparable season, time and weather conditions.
+
+- State that animals in refuges are outside this available-animal estimate.
+:::
+::: {.column width="43%"}
+```{=latex}
+\begin{center}
+\begin{tikzpicture}[scale=0.62]
+\fill[grn!12] (0,0) rectangle (5,5);
+\draw[thick] (0,0) rectangle (5,5);
+\node[align=center] at (2.5,2.5) {Hypothetical\\survey region\\100 km$^2$};
+\draw[<->] (0,-0.4)--node[below,font=\small]{10 km}(5,-0.4);
+\end{tikzpicture}
+\end{center}
+```
+:::
+::::
+
+<!-- The protocol describes rare, fragmented southern occurrences, including
+Batken and Fergana foothills. No actual site polygon or local density is claimed.
+The conditional target requires standardised activity conditions and perfect
+near-line detection among available animals; it is not all living monitors. -->
+
+## Select lines before looking for animals
+
+:::: {.columns}
+::: {.column width="57%"}
+\small
+- Place lines randomly across the defined region.
+
+- Include open and shrubby areas, including places with no known sightings.
+
+- Plan access after selecting lines; do not move lines to promising tracks.
+
+- Record inaccessible sections and revisit or apply a pre-agreed replacement rule.
+
+**Teaching dataset:** 40 lines, each 2 km long. The diagram shows only a subset.
+:::
+::: {.column width="43%"}
+```{=latex}
+\begin{center}
+\begin{tikzpicture}[scale=0.68]
+\fill[grn!9] (0,0) rectangle (5,5);
+\fill[grn!25] (3,0) rectangle (5,5);
+\draw[thick] (0,0) rectangle (5,5);
+\draw[gray,dashed] (0,0.7)..controls (1.5,2) and (2,0.3)..(5,2.5);
+\foreach \x/\y in {0.3/4.2,2.3/4,3.9/3.2,0.5/2.3,2.2/2.4,3.6/1,1.1/0.4}{
+\draw[bl,very thick] (\x,\y)--+(0.8,0);}
+\node[font=\scriptsize] at (1.4,5.35) {Open};
+\node[font=\scriptsize] at (4,5.35) {Shrubby};
+\node[font=\scriptsize,align=center] at (2.5,-0.7) {Blue: selected lines\\Dashed: access track};
+\end{tikzpicture}
+\end{center}
+```
+:::
+::::
+
+<!-- Pure schematic, not generated GPS coordinates or the exact simulation design.
+Random placement matches the introductory encounter-rate variance estimator.
+Mapped habitat strata can be useful, but stratified estimation is not taught here. -->
+
+## Pilot the method and standardise conditions
+
+- Use a few lines spanning the habitat and visibility conditions.
+
+- Check activity, near-line detection, distance accuracy and time per kilometre.
+
+- Practise identification and first-position recording before the main survey.
+
+- Record temperature, weather, start/end times and observers.
+
+- Use pilot encounter rates and desired precision to plan the main effort.
+
+For this exercise, search to **40 m on each side** and analyse distances
+up to **30 m on each side**. These are illustrative choices to test in a pilot.
+
+\alert{The protocol's strip width and our truncation distance are different quantities.}
+
+<!-- Monitor protocol: spring/summer activity and reduced visibility while in
+shelters; the methodology review adds morning/evening surveys outside peak heat.
+Do not imply that these conditions guarantee every available animal is detected.
+The document's 20--30 m strip is not silently reinterpreted as a half-width. -->
+
+## Measure distance to the initial position
+
+Search ahead while walking at a steady pace. Record the location where the
+monitor was first detected, before approaching for a photograph.
+
+```{=latex}
+\begin{center}
+\begin{tikzpicture}[x=0.8cm,y=0.8cm]
+\draw[->,very thick] (0,0)--(0,2.7) node[above,font=\small]{Line};
+\fill (0,0) circle (0.07) node[left,font=\small]{Observer};
+\fill[rd] (3.5,2) circle (0.09) node[right,font=\small]{Monitor};
+\draw[dashed] (0,0)--node[below right,font=\small]{Sighting distance $r$}(3.5,2);
+\draw[bl,thick] (0,2)--node[above,font=\small]{Perpendicular distance $x$}(3.5,2);
+\draw (0,1.75)--(0.25,1.75)--(0.25,2);
+\end{tikzpicture}
+\end{center}
+```
+
+Record $x$ directly, or measure sighting distance and angle to the line.
+For example, $r=20$ m and angle $30^\circ$ gives $x=20\sin(30^\circ)=10$ m.
+
+<!-- Angle measured from the forward direction of the line, not compass north.
+Use horizontal ground distance. Never measure the position reached after escape. -->
+
+## Record sightings consistently
+
+\small
+
+| Survey record | Sighting record |
+|:--|:--|
+| Line ID, date and observers | Unique sighting ID and line ID |
+| Start/end GPS and actual length | Initial position and perpendicular distance |
+| Start/end time and conditions | Identification, age if reliable, behaviour |
+| Habitat and completion status | Photograph reference and notes |
+
+\vspace{0.2cm}
+Count **one animal per sighting**, once during that pass. Do not create
+additional detections when you photograph or follow it.
+
+Keep uncertain identification for review. A missing distance for a sighting
+is a missing data problem, not evidence of a zero count.
+
+Before leaving, reconcile sightings and effort, resolve missing IDs or units,
+and back up the sheet, photographs and GPS tracks.
+
+## Keep effort, including lines with zero sightings
+
+Record the **actual searched length**, even if no monitors are detected.
+Do not use the planned length for an interrupted survey.
+
+| Line | Actual length (km) | Detections | Status |
+|:--|--:|--:|:--|
+| M001 | 2.0 | 2 | Complete |
+| M002 | 2.0 | 0 | Complete |
+| M003 | 1.3 | 1 | Interrupted: weather |
+
+Analyse only documented searched effort. Do not treat an unvisited line as a zero.
+
+In the R teaching file, a completed line with no detections has its own row,
+with `object` and `distance` left empty.
+
+## Separate availability from distance detection
+
+:::: {.columns}
+::: {.column width="62%"}
+A monitor underground may be missed even when its burrow is on the line.
+
+\vspace{2em}
+
+- Our curve corrects for **available animals overlooked at a distance**.
+
+- It does not estimate how many monitors remained in refuges.
+
+- Tracks and burrows provide useful separate evidence of presence.
+
+- They are not extra monitor sightings in this analysis.
+
+- Our analysis estimates abundance of \alert{available (above-ground)} animals.
+
+:::
+::: {.column width="38%"}
+
+\begin{center}
+\includegraphics[width=\textwidth,height=0.48\textheight,keepaspectratio]{figures/monitor-tracks-davletbakov.png}
+
+\footnotesize Tracks: A. Davletbakov
+\end{center}
+:::
+::::
+
+<!-- Conventional g(0)=1 must hold for the conditional, available population.
+The protocol's claims about converting indirect sign counts into population
+size are not reproduced: a separate, validated relationship would be needed. -->
+
+## Separate availability from distance detection
+
+:::: {.columns}
+::: {.column width="62%"}
+
+- Our analysis estimates abundance of \alert{available (above-ground)} animals.
+
+- Estimating \alert{all living} monitors requires additional information.
+
+- Consider whether this is necessary to achieve monitoring goals.
+:::
+::: {.column width="38%"}
+
+\begin{center}
+\includegraphics[width=\textwidth,height=0.48\textheight,keepaspectratio]{figures/monitor-tracks-davletbakov.png}
+
+\footnotesize Tracks: A. Davletbakov
+\end{center}
+:::
+::::
+
+\vspace{2em}
+
+Distance to tracks and burrows can support **separate** distance sampling surveys, but these estimate the abundance of \alert{signs}. They should not be mixed with animal sighting data (unless using more advanced models).
+
+<!-- Conventional g(0)=1 must hold for the conditional, available population.
+The protocol's claims about converting indirect sign counts into population
+size are not reproduced: a separate, validated relationship would be needed. -->
+
+# Desert monitors: analysis in R
+
+## Input data format
+
+`monitor_line_transects.csv` captures survey information beside each detection.
+
+\small
+
+| Column | Meaning |
+|:--|:--|
+| `Region.Label`, `Area` | Region ID and area in km$^2$ |
+| `Sample.Label`, `Effort` | Line ID and actual length in km |
+| `object`, `distance` | Sighting ID and perpendicular distance in m |
+| `habitat`, `status` | Visibility-related habitat and survey completion |
+
+\vspace{0.1cm}
+A zero-count line appears once, with missing `object` and `distance`.
+A distance of **0 m** means a detected animal on the line, not a zero count.
+
+<!-- Flat-file conventions: Distance::ds and flatfile documentation.
+No size column: both examples count individuals, not groups. -->
+
+## Import and inspect the data
+
+```{r import-monitors, echo=TRUE}
+library(Distance)
+monitors <- read.csv("data/monitor_line_transects.csv")
+monitors$habitat <- factor(monitors$habitat)
+head(monitors[, c("Sample.Label", "Effort", "distance")], 4)
+```
+
+One row usually represents a detection; `nrow(monitors)` also includes
+zero-count placeholders. Count sightings using `sum(!is.na(monitors$distance))`.
+
+## Check the data and calculate effort
+
+```{r check-monitors, echo=TRUE}
+lines <- unique(monitors[, c("Sample.Label", "Effort")])
+stopifnot(!anyDuplicated(lines$Sample.Label))
+stopifnot(all(lines$Effort > 0))
+stopifnot(all(monitors$distance >= 0, na.rm = TRUE))
+sum(lines$Effort)
+sum(is.na(monitors$distance))
+```
+
+**Simulated data:** `r nrow(lines)` lines; `r sum(lines$Effort)` km searched;
+`r sum(is.na(monitors$distance))` lines with no detections.
+
+Sum effort **once per line**. `sum(monitors$Effort)` would count each line
+again for every sighting. Keep the zero-count rows in the data supplied to `ds()`.
+
+## Inspect distances and choose truncation
+
+```{r monitor-histogram, echo=-1, fig.height=1.8}
+style_plot()
+w_monitor <- 30
+hist(monitors$distance, breaks = seq(0, 40, 5),
+     xlab = "Perpendicular distance (m)", main = "Simulated monitors",
+     col = "lightblue")
+abline(v = w_monitor, col = "red", lty = 2)
+```
+
+The red line marks the analysis limit, **30 m on each side**.
+`r sum(monitors$distance > w_monitor, na.rm=TRUE)` sighting(s) lie beyond it.
+`ds()` excludes those sightings while retaining line effort.
+
+Choose the limit from measurement quality and the distance pattern; avoid
+choosing it just to obtain a preferred abundance estimate.
+
+## Reconcile metres, kilometres and square kilometres
+
+```{r line-conversion, echo=TRUE}
+line_units <- convert_units(
+  "meter", "kilometer", "square kilometer")
+```
+
+\small
+
+| Quantity | Unit in this exercise |
+|:--|:--|
+| Perpendicular distances and truncation | Metres |
+| Actual line length | Kilometres |
+| Region area | Square kilometres |
+| Reported density | Available animals per km$^2$ |
+
+\vspace{0.1cm}
+Supply `line_units` to each model. Wrong units can produce a plausible-looking
+curve but a badly wrong density estimate.
+
+\footnotesize See https://distancesampling.org/Distance/reference/convert_units.html.
+
+## Fit a simple half-normal model
+
+```{r fit-monitor-hn, echo=TRUE, results='hide'}
+monitor_hn <- ds(monitors,
+  transect = "line", truncation = w_monitor,
+  key = "hn", adjustment = NULL,
+  convert_units = line_units, optimizer = "R")
+```
+
+- `"hn"` selects the half-normal curve.
+
+- `adjustment = NULL` fits the basic shape without adjustment terms.
+
+- Region area and effort in the file allow density and abundance estimation.
+
+- `optimizer = "R"` uses the R fitting engine.
+
+Use `summary(monitor_hn)` to inspect the full output.
+We will select the important parts over the next slides.
+
+\footnotesize
+Workflow adapted from [distancesampling.org](https://distancesampling.org/online-course/02-detfns/R-prac/Pr2-instructions.html).
+
+## Inspect the fitted detection curve
+
+```{r plot-monitor-hn, echo=-1, fig.height=2.3}
+style_plot()
+plot(monitor_hn, showpoints = FALSE, nc = 6,
+     xlab = "Perpendicular distance (m)")
+```
+
+```{r monitor-summary-values, include=FALSE}
+monitor_summary <- summary(monitor_hn)
+p_monitor <- monitor_summary$ds$average.p
+```
+
+**Simulated result:** average detection within 30 m is about
+**`r fmt(100 * p_monitor, 0)`%** of available animals.
+
+Check the near-line shoulder and the overall distance pattern. A good-looking
+curve cannot establish that animals in burrows were available.
+
+## Fit a plausible alternative
+
+```{r fit-monitor-hr, echo=TRUE, results='hide'}
+monitor_hr <- ds(monitors,
+  transect = "line", truncation = w_monitor,
+  key = "hr", adjustment = NULL,
+  convert_units = line_units, optimizer = "R")
+```
+
+```{r compare-monitor-curves, fig.height=2.0, out.width='94%'}
+style_plot(c(1, 2))
+plot(monitor_hn, showpoints=FALSE, nc=6, main="Half-normal", xlab="Distance (m)")
+plot(monitor_hr, showpoints=FALSE, nc=6, main="Hazard-rate", xlab="Distance (m)")
+```
+
+Both models use **the same data, effort and 30 m limit**.
+Compare their fit and estimates; do not choose a curve just because it is flexible.
+
+## Compare relative support using AIC
+
+```{r monitor-aic, echo=TRUE}
+AIC(monitor_hn, monitor_hr)
+```
+
+```{r aic-values, include=FALSE}
+aic_simple <- AIC(monitor_hn, monitor_hr)
+aic_gap <- abs(diff(aic_simple$AIC))
+```
+
+**Simulated result:** the AIC difference is **`r fmt(aic_gap)`**.
+The half-normal has the lower AIC, but support is fairly similar.
+
+AIC compares these candidates. It does not tell us whether either model is
+adequate, or whether the field assumptions hold.
+
+## Check goodness of fit
+
+```{r monitor-gof, echo=-1, results='hide', fig.width=3, fig.height=3, out.width='38%'}
+style_plot()
+monitor_gof <- gof_ds(monitor_hn)
+```
+
+The Q--Q plot should stay reasonably close to the diagonal.
+Simulated test p-value: **`r fmt(monitor_gof$dsgof$CvM$p, 2)`**.
+A large p-value does not prove the model is correct.
+
+Investigate systematic deviations, rounded distances, or a deficit near zero
+before using the model for inference.
+
+## Extract density and abundance
+
+```{r monitor-estimates, echo=TRUE, results='hide'}
+monitor_D <- monitor_hn$dht$individuals$D
+monitor_N <- monitor_hn$dht$individuals$N
+```
+
+**Simulated available-animal density, per km$^2$:**
+
+```{r monitor-density-table, results='asis'}
+compact_results(monitor_D, 2)
+```
+
+**Simulated available-animal abundance in the 100 km$^2$ region:**
+
+```{r monitor-abundance-table, results='asis'}
+compact_results(monitor_N, 0)
+```
+
+`lcl` and `ucl` give lower and upper confidence limits. `cv` measures uncertainty
+relative to the estimate; it is not detection probability.
+
+## Interpret the uncertainty
+
+```{r monitor-interval, fig.height=1.6}
+style_plot()
+plot(monitor_N$Estimate, 1, xlim = c(0, monitor_N$ucl * 1.1),
+     ylim = c(0.7, 1.3), pch = 16, col = bl, yaxt = "n",
+     xlab = "Simulated available-animal abundance", ylab = "")
+segments(monitor_N$lcl, 1, monitor_N$ucl, 1, col = bl, lwd = 3)
+points(monitor_N$Estimate, 1, pch = 16, col = bl, cex = 1.3)
+```
+
+Report approximately **`r fmt(monitor_N$Estimate, 0)` available monitors**,
+with a 95% CI of **`r fmt(monitor_N$lcl, 0)`--`r fmt(monitor_N$ucl, 0)`**.
+
+- Uncertainty includes encounter-rate variation and detection-model estimation.
+
+- The interval does not include bias from unrepresentative lines or missed
+  animals at zero distance.
+
+- Wider intervals limit our ability to distinguish population changes.
+
+## What would an uncorrected count suggest?
+
+```{r uncorrected-density, echo=TRUE, results='hide'}
+n_retained <- sum(monitors$distance <= w_monitor, na.rm = TRUE)
+strip_km2 <- 2 * w_monitor / 1000 * sum(lines$Effort)
+raw_density <- n_retained / strip_km2
+```
+
+```{r raw-corrected-plot, fig.height=1.8}
+style_plot()
+barplot(c(raw_density, monitor_D$Estimate),
+        names.arg = c("Count / strip area", "Detection corrected"),
+        col = c("grey65", bl), border = NA,
+        ylab = "Available animals per km2", main = "Simulated monitors")
+```
+
+These use the **same retained sightings and surveyed strip**.
+The model adds a correction for available animals overlooked during the search.
+
+## Add one detection covariate
+
+```{r fit-monitor-covariate, echo=TRUE, results='hide'}
+monitor_cov <- ds(monitors,
+  transect = "line", truncation = w_monitor,
+  key = "hn", adjustment = NULL, formula = ~habitat,
+  convert_units = line_units, optimizer = "R")
+```
+
+```{r covariate-comparison, echo=TRUE}
+AIC(monitor_hn, monitor_cov)
+```
+
+**Result:** habitat improves AIC support. Note here it explains detection,
+not a model of monitor abundance in each habitat.
+
+Inspect this model's fit with `plot(monitor_cov)` and `gof_ds(monitor_cov)`.
+
+<!-- In simulation true available density is the same in both habitats; only
+half-normal scale differs. Pooled CDS illustrates approximate pooling robustness.
+A covariate model is an introductory extension, not stratified abundance inference.
+The half-normal remains the transparent main walkthrough, not claimed as final
+best model after adding habitat. Companion code includes all candidate outputs. -->
+
+# Case study 2: Golden eagles
+
+## Start with the existing eagle protocol
+
+:::: {.columns}
+::: {.column width="56%"}
+\small
+The protocol searches potential nesting areas using regular observation stops.
+
+- Stop spacing responds to valley width and terrain.
+
+- Inspections last at least 5 minutes, often 15--30 minutes.
+
+- Record birds, perches and nests separately.
+
+- The sighting card already includes radial distance and azimuth.
+
+:::
+::: {.column width="44%"}
+\begin{center}
+\includegraphics[width=\textwidth,height=0.46\textheight,keepaspectratio]{figures/golden-eagle-davletbakov.jpg}
+
+\footnotesize Photo: A. Davletbakov
+\end{center}
+:::
+::::
+
+Our DS addition uses **representative points and a bird snapshot**.
+
+\footnotesize
+Source: Davletbakov & Koshkin (2026)
+
+## Define what the point survey estimates
+
+**Research question:** what is the density of available golden eagles at a
+standardised snapshot in a hypothetical **1,000 km$^2$** region?
+
+- Count identifiable individual birds at that moment.
+
+- This is not an estimate of occupied nests, breeding pairs or nesting success.
+
+- Keep nest/perch records in the existing monitoring programme.
+
+- An eagle hidden behind a ridge is not made detectable by recording a distance.
+
+A regional estimate requires representative points **and** a defensible
+available-animal detection model near zero distance.
+
+<!-- No claim that standard point DS can recover total eagle density in rugged
+Pamir-Alai terrain. Availability must be distinguished from declining detection
+with distance; spatially biased visible sectors cannot simply represent hidden
+sectors without additional design/model assumptions. -->
+
+## Select points and assess the view
+
+:::: {.columns}
+::: {.column width="58%"}
+- Select points across the target region before visiting known nests.
+
+- Choose safe access without shifting points to the best-looking perches.
+
+- Pilot how much of each circle is visible; map terrain obstructions.
+
+- Avoid overlapping observation sessions and double recording the same bird.
+
+:::
+::: {.column width="42%"}
+```{=latex}
+\begin{center}
+\begin{tikzpicture}[scale=0.6]
+\fill[bl!5] (0,0) circle (2.3);
+\draw[bl] (0,0) circle (2.3);
+\fill[gray!40] (0,0)--(1.3,1.9) arc (56:135:2.3)--cycle;
+\fill (0,0) circle (0.1);
+\node[font=\small,align=center] at (0.1,1.4) {Blocked by\\ridge};
+\node[font=\small,align=center] at (0,-1.2) {Visible sector};
+\node[font=\scriptsize,align=center] at (0,-3) {A blocked circle is not\\a fully surveyed circle};
+\end{tikzpicture}
+\end{center}
+```
+:::
+::::
+
+\vspace{1em}
+
+Our idealised exercise has **100 completed points** with unobstructed circles.
+A real programme may need a different method where views are consistently restricted.
+
+<!-- Sector shown schematically; no sector-area correction is taught. A
+covariate or simply subtracting unseen area does not guarantee unbiased inference.
+The data generator assumes ideal full-circle coverage. -->
+
+## Use a snapshot, not an accumulating bird list
+
+For the hypothetical pilot, use a consistent **2-minute settling period**,
+then **5 minutes to locate birds**, followed by one designated snapshot.
+
+```{=latex}
+\begin{center}
+\begin{tikzpicture}[x=0.8cm,y=0.7cm,>=Stealth]
+\draw[->,thick] (0,0)--(10,0);
+\foreach \x/\txt in {0/Arrive,2/Begin locating,7/Snapshot} {
+\draw (\x,0.12)--(\x,-0.12);
+\node[below,font=\small,align=center] at (\x,-0.2) {\txt};}
+\node[above,font=\small] at (1,0.1) {Settle};
+\node[above,font=\small] at (4.5,0.1) {Locate birds};
+\node[above,font=\small] at (8.5,0.1) {Confirm positions};
+\end{tikzpicture}
+\end{center}
+```
+
+Record each bird's position **at the snapshot**. Do not add birds arriving later.
+Pilot this timing; it is not a validated golden eagle protocol.
+
+Keep targeted nest inspections separate and follow the source protocol's
+weather and nest-disturbance restrictions.
+
+<!-- Snapshot approach: CREEM point-transect practical and field-method module;
+2+5 minutes is an explicit hypothetical choice, not quoted from CREEM or the
+national protocol. Follow the exact source restrictions in real nest work;
+no visits to nests with clutches/chicks under 15 days, weather-dependent limits. -->
+
+## Record horizontal radial distance
+
+:::: {.columns}
+::: {.column width="63%"}
+- Measure from the point to the bird's snapshot position, not its later perch.
+
+- Use rangefinder/GPS and bearing to locate it; use **horizontal** distance.
+
+- A sloping sightline or distance to a flying bird is not automatically ground distance.
+
+- Search to 1,200 m for this exercise; analyse within a 1,000 m radius.
+
+:::
+::: {.column width="37%"}
+```{=latex}
+\begin{center}
+\begin{tikzpicture}[scale=0.4]
+\draw[bl] (0,0) circle (2.5);
+\fill (0,0) circle (0.1) node[below,font=\small]{Point};
+\fill[rd] (1.4,1.5) circle (0.1) node[above,font=\scriptsize]{Bird};
+\draw[->,thick] (0,0)--node[above left,font=\scriptsize]{Radial distance}(1.4,1.5);
+\end{tikzpicture}
+\end{center}
+```
+:::
+::::
+
+\vspace{2em}
+
+Large, fast-moving birds require careful position recording. If snapshot
+locations cannot be obtained reliably, revise the method before collecting main data.
+
+## Keep point effort and individual sightings
+
+\small
+
+| Survey record | Sighting record |
+|:--|:--|
+| Point ID and GPS, date, observers | Unique bird ID linked to point |
+| Timing, completion, visibility and weather | Snapshot radial distance and azimuth |
+| One completed snapshot: `Effort = 1` | Identification, behaviour, photograph |
+
+\vspace{0.2cm}
+
+\normalsize 
+An empty completed point contributes effort and a zero-count placeholder.
+A missed or aborted point is not an empty completed point.
+
+Effort is **the number of completed snapshots**, not observation minutes.
+For later repeat surveys, retain point and visit IDs and account for dependence;
+do not pool revisits as independent new points.
+
+## Import the point data and inspect distances
+
+```{r import-eagles, echo=-1, fig.height=1.7}
+style_plot()
+eagles <- read.csv("data/golden_eagle_point_transects.csv")
+points <- unique(eagles[, c("Sample.Label", "Effort")])
+stopifnot(nrow(points) == 100, all(points$Effort == 1))
+hist(eagles$distance, breaks = seq(0, 1200, 150),
+     xlab = "Radial distance (m)", main = "Simulated eagles",
+     col = "lightblue")
+```
+
+Counts can rise before falling: **outer rings have more area**.
+This histogram is not a graph of detection probability.
+
+`r sum(is.na(eagles$distance))` completed points have no detections;
+retain those rows when fitting the model.
+
+## Fit the point model and plot both views
+
+```{r fit-eagle, echo=TRUE, results='hide'}
+point_units <- convert_units("meter", NULL, "square kilometer")
+w_eagle <- 1000
+eagle_hn <- ds(eagles, transect = "point",
+  truncation = w_eagle, key = "hn", adjustment = NULL,
+  convert_units = point_units, optimizer = "R")
+```
+
+```{r eagle-two-views, fig.height=2.3, out.width='94%'}
+style_plot(c(1, 2))
+plot(eagle_hn, showpoints = FALSE, main = "Detection probability")
+par(mar = c(3.5, 6, 1.5, 0.7))
+plot(eagle_hn, pdf = TRUE, showpoints = FALSE, ylab = "",
+     main = "Observed distance distribution")
+mtext("Probability density", side = 2, line = 4.3, las = 0)
+```
+
+`plot(eagle_hn, pdf = TRUE)` combines ring area and detection: its peak
+can occur away from zero. Bars show scaled frequencies; only the left
+curve is detection probability.
+
+## Check and interpret the eagle result
+
+```{r eagle-results, echo=TRUE, results='hide'}
+eagle_gof <- gof_ds(eagle_hn, plot = FALSE)
+eagle_D <- eagle_hn$dht$individuals$D
+eagle_N <- eagle_hn$dht$individuals$N
+```
+
+**Simulated available-bird density per km$^2$:**
+
+```{r eagle-density-table, results='asis'}
+compact_results(eagle_D, 3)
+```
+
+**Simulated abundance in the hypothetical region:** approximately
+**`r fmt(eagle_N$Estimate, 0)` birds**, 95% CI
+**`r fmt(eagle_N$lcl, 0)`--`r fmt(eagle_N$ucl, 0)`**.
+
+Inspect the Q--Q plot using `gof_ds(eagle_hn)`. As with monitors, compare plausible
+alternatives before choosing a final model.
+
+\alert{These are available-bird snapshot estimates, not total eagle population or
+nesting-territory estimates.}
+
+## Plan comparable surveys through time
+
+- Retain the same sampling design and target region.
+
+- Repeat within a comparable season, time window and activity conditions.
+
+- Record habitat, visibility, observer and effort changes every year.
+
+- Estimate detection for the new data; do not assume it stayed constant.
+
+- Report uncertainty and changes in the available-animal estimate.
+
+**Fewer active monitors or visible eagles can reflect changed availability.**
+A trend in these estimates becomes a total-population trend only with
+additional evidence that availability is comparable or has been accounted for.
+
+## Report the estimate and the survey it describes
+
+A useful report states:
+
+- Species, region, dates and **available-animal target**.
+
+- Sampling design, number of completed surveys and actual effort.
+
+- Distances, units, truncation and detection model, with checks.
+
+- Density/abundance, confidence interval and limitations.
+
+## Further resources
+
+- Online course: https://distancesampling.org/online-course/
+
+- Distance documentation: https://distancesampling.org/Distance/reference/ds.html.
+
+<!-- ## Now try for yourself -->
+
+<!-- Run `code/distance_sampling_practical.R` for the analyses and -->
+<!-- `code/simulate_distance_data.R` to reproduce the simulated datasets. -->
+
+<!-- \vspace{0.5em} -->
+<!-- **A. Monitors:** refit with a 25 m truncation distance. Keep all line effort. -->
+<!-- Compare the estimate and CI with the 30 m result; do not compare their AIC -->
+<!-- values because the retained datasets differ. -->
+
+<!-- \vspace{0.5em} -->
+<!-- **B. Eagles:** change `key = "hn"` to `key = "hr"`, keeping 1,000 m truncation. -->
+<!-- Compare AIC, plots, goodness of fit and density estimates. -->
+
+<!-- \vspace{0.5em} -->
+<!-- **Discuss:** would a better-fitting curve justify extrapolating from routes -->
+<!-- chosen because animals were already known to occur there? -->
+
+
+<!-- Expected discussion: stable estimates across reasonable truncations support
+robustness but do not validate placement/availability. Lower AIC on a different
+truncated dataset is not comparable. No fitting example silently drops zero effort. -->

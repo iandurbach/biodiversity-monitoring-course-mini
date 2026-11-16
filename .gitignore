@@ -1,0 +1,21 @@
+# Original source materials, at any depth.
+source/
+
+# Course administration.
+/admin/
+
+# Private reading resources, at any depth.
+**/further_reading/resources/
+
+# Local operating-system, editor, and R session files.
+.DS_Store
+._*
+.Rproj.user/
+.Rhistory
+.Ruserdata
+.quarto/
+__pycache__/
+*.pyc
+
+# Locally installed R packages.
+R-library/

@@ -1,0 +1,42 @@
+BIODIVERSITY MONITORING
+=======================
+
+Bibliography and linked learning resources extracted from the course QMDs.
+QMDs reviewed:
+  01_intro_biodiversity.qmd
+Checked: 27 October 2026.
+
+LITERATURE
+----------
+
+[1] Nichols, J. D. & Williams, B. K. (2006). Monitoring for conservation. Trends in
+    Ecology & Evolution, 21(12), 668-673.
+    DOI: https://doi.org/10.1016/j.tree.2006.08.007
+
+[2] MARTIN, J., KITCHENS, W. M. & HINES, J. E. (2007). Importance of Well‐Designed
+    Monitoring Programs for the Conservation of Endangered Species: Case Study of the
+    Snail Kite. Conservation Biology, 21(2), 472-481.
+    DOI: https://doi.org/10.1111/j.1523-1739.2006.00613.x
+
+[3] Johnston, A., Fink, D., Reynolds, M. D., Hochachka, W. M., Sullivan, B. L., Bruns,
+    N. E., Hallstein, E., Merrifield, M. S., Matsumoto, S. & Kelling, S. (2015).
+    Abundance models improve spatial and temporal prioritization of conservation
+    resources. Ecological Applications, 25(7), 1749-1756.
+    DOI: https://doi.org/10.1890/14-1826.1
+
+[4] Katzner, T. E., Ivy, J. A. R., Bragin, E. A., Milner‐Gulland, E. J. & DeWoody, J. A.
+    (2011). Conservation implications of inaccurate estimation of cryptic population
+    size. Animal Conservation, 14(4), 328-332.
+    DOI: https://doi.org/10.1111/j.1469-1795.2011.00444.x
+
+[5] Karanth, K. U., Nichols, J. D., Goodrich, J. M., Reddy, G. V., Mathur, V. B.,
+    Wibisono, H. T., Sunarto, Pattanavibool, A. & Gumal, M. T. (2017). Role of
+    Monitoring in Global Tiger Conservation. In K. U. Karanth & J. D. Nichols (eds),
+    Methods for Monitoring Tiger and Prey Populations, pp. 1–13. Springer, Singapore.
+
+[6] Convention on Biological Diversity (2022). Kunming–Montreal Global Biodiversity
+    Framework: Target 4, Halt Species Extinction, Protect Genetic Diversity, and Manage
+    Human–Wildlife Conflicts; and Target 21, Ensure That Knowledge Is Available and
+    Accessible To Guide Biodiversity Action.
+    URL: https://www.cbd.int/gbf/targets/4
+    URL: https://www.cbd.int/gbf/targets/21

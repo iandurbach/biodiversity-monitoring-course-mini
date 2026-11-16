@@ -1,0 +1,108 @@
+---
+format:
+  pdf:
+    pdf-engine: xelatex
+    documentclass: article
+    papersize: a4
+    fontsize: 10pt
+    mainfont: Arial
+    geometry:
+      - top=14mm
+      - bottom=16mm
+      - left=17mm
+      - right=17mm
+    colorlinks: false
+    keep-tex: false
+    include-in-header:
+      text: |
+        \usepackage{array,longtable,booktabs,amssymb,fancyhdr}
+        \pagestyle{fancy}
+        \fancyhf{}
+        \renewcommand{\headrulewidth}{0pt}
+        \fancyfoot[L]{\scriptsize Wildlife survey games -- instructor}
+        \fancyfoot[R]{\scriptsize\thepage}
+        \setlength{\parskip}{4pt}
+        \setlength{\LTpre}{3pt}
+        \setlength{\LTpost}{3pt}
+execute:
+  echo: false
+  warning: false
+  message: false
+  error: false
+---
+
+```{r}
+source("../scripts/print_helpers.R")
+library(survey)
+g <- simulate_game("plot_sampling")
+```
+
+# Desert monitor survey — instructor guide
+
+**Teams:** 3–5. **Survey and comparison:** 25–35 minutes; allow another 15–20 minutes for beginners working through R. **Seed:** `r g$seed`.
+
+## Prepare and distribute
+
+Print one **A3 landscape** `printable_materials.pdf` per team, in colour at actual size. Print the **same** one-page `student_instructions.pdf` and `recording_sheet.pdf` for every team, on A4. Print `task_cards.pdf`; assign each team one task and one sample-set letter. This card is the only task-specific handout. No concealed plot cards are needed. Students count symbols directly on the landscape. Keep this guide and `data/instructor/` until the reveal.
+
+Assign half the teams Task A (simple random sampling) and half Task B (stratified random sampling). Cycle sample-set letters A–D independently of task. Both tasks survey **20 plots**. Task B samples 10 green and 10 open plots; because habitats have equal area, this is also proportional allocation. The two tasks use independent random lists, so paired sets need not share plots. Select lists before looking at counts; never replace lists to make one design look better.
+
+Provide R/RStudio and the `survey` package, installed before class if necessary with `install.packages("survey")`. Share `code/` and `data/student/`. Run scripts section by section in RStudio; each prompts for the team's CSV. Command-line use: `Rscript code/task_A_srs.R path/to/counts.csv` (or Task B). The CSV header is **plot_id,habitat,count**, exactly as on the recording sheet. Habitat values are **green** and **open**.
+
+## Facilitate
+
+Allow 3 minutes for roles and the selected plot list, 8–10 for counting and checking, then data entry, calculations and comparison. The full landscape is deliberately visible: ask students to count only selected cells and not census the map. Require abundance and CI submissions before announcing the truth. Check zeros, duplicates and habitat labels. Do not infer individual counts from the shading.
+
+## Population and design
+
+The synthetic landscape contains **300 desert monitors in 100 one-hectare plots**. Open habitat (A–E): **180 in 50 plots**, density **3.6/ha**. Green habitat (F–J): **120 in 50 plots**, density **2.4/ha**, exactly two-thirds of open density. Animals are allocated randomly among cells within each habitat, then placed randomly with symbol clearance. This fixed population is shared by both tasks. The printed cells represent equal area even though they are drawn as rectangles to fill the A3 page. Detection is complete; there is no movement or detection correction.
+
+## Estimation, matching the main practical
+
+Task A: $\hat N=100\bar y$ and $SE=100\sqrt{(1-20/100)s^2/20}$. In R use `svydesign` with `ids=~1`, `weights=~w`, `fpc=~M`, `data=srs`, with `M=100` and `w=100/20`.
+
+Task B: $\hat N=50\bar y_{green}+50\bar y_{open}$ and $SE=\sqrt{\sum_h 50^2(1-10/50)s_h^2/10}$. Use `svydesign` with `ids=~1`, `strata=~habitat`, `weights=~w`, `fpc=~M`, `data=strat`, with `M=50`, `Msmp=10` and `w=M/Msmp` in both habitats.
+
+Both use `svytotal(~count, design)` and `confint(fit, df=degf(design))`, as in the main practical’s confidence-interval script. These are approximate t-based 95% intervals with the finite-population correction. Degrees of freedom are 19 for A and 18 for B. Retain the calculated interval without truncation. With equal allocation here, both point-estimate formulas equal 100 times the pooled mean; uncertainty still depends on the design.
+
+```{r, results='asis'}
+page("ANSWER KEY — INSTRUCTOR ONLY")
+answers <- list()
+for(task in c("A","B")) for(team in LETTERS[1:4]) {
+ s <- g$selections[g$selections$task==task & g$selections$team==team,]
+ z <- g$truth[match(s$id,g$truth$id),]
+ if(task=="A") {
+   z$M <- 100; z$w <- 5
+   design <- svydesign(ids=~1,weights=~w,fpc=~M,data=z)
+ } else {
+   z$M <- 50; z$w <- 5
+   design <- svydesign(ids=~1,strata=~habitat,weights=~w,fpc=~M,data=z)
+ }
+ fit <- svytotal(~count,design)
+ ci <- confint(fit,df=degf(design))
+ answers[[length(answers)+1]] <- data.frame(Task=task,Set=team,
+   Green=sum(z$green),Open=sum(!z$green),Count=sum(z$count),
+   Estimate=round(coef(fit)[1],1),SE=round(SE(fit)[1],1),
+   Lower=round(ci[1],1),Upper=round(ci[2],1))
+}
+table_tex(do.call(rbind,answers))
+```
+
+These answers apply only to the supplied sample lists and correctly counted cells. Student scripts use their entered data; a mismatch is a reason to check the recording against this key.
+
+## Cell counts
+
+Rows increase from the bottom of the map. Columns F–J are green; A–E are open.
+
+```{r, results='asis'}
+m <- matrix(g$truth$count,nrow=10,ncol=10,byrow=TRUE)
+d <- data.frame(Row=sprintf("%02d",1:10),m,check.names=FALSE)
+names(d)[-1] <- LETTERS[1:10]
+table_tex(d)
+```
+
+## Discussion and reveal
+
+Reveal 300 monitors, then compare estimates, interval widths and whether each interval covers the truth. Both designs are unbiased over repeated samples. Stratification fixes habitat representation and estimates uncertainty within habitats; it can improve precision when habitat means differ. Here the density contrast is modest, so a dramatic improvement is not guaranteed. A single narrow interval or close estimate does not establish that one design is always better. With the same data and equal weights, point estimates agree even though the variance calculations differ. In repeated sampling, an approximate 95% CI should contain the true total about 95% of the time; it does not assign 95% probability to this fixed total after observing the interval.
+
+Instructor-only CSVs include complete counts, animal positions, filled example CSVs for each task/set and calculated answers. Use these to check data entry and scripts after students submit results.

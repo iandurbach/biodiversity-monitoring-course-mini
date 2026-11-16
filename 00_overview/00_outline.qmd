@@ -1,0 +1,188 @@
+---
+title: Introductions and Outline
+subtitle: Biodiversity Monitoring Course, Module 0
+fontsize: 10pt
+format:
+  beamer:
+    theme: metropolis
+    incremental: false
+    slide-level: 2
+    pdf-engine: xelatex
+    syntax-highlighting: tango
+    include-in-header:
+      text: |
+        \usepackage{arydshln}
+        \usepackage{animate}
+        \usepackage{qrcode}
+        \definecolor{bl}{rgb}{0.16,0.32,0.75}
+        \definecolor{rd}{rgb}{0.82,0.1,0.26}
+        \definecolor{grn}{rgb}{0.55,0.71,0.0}
+        \providecommand{\hig}[1]{\textcolor{grn}{#1}}
+        \providecommand{\hir}[1]{\textcolor{rd}{#1}}
+        % Use a shared rhythm for text slides, with tighter gaps within nested lists.
+        \newcommand{\roomyitems}[1][0.5em]{\renewcommand{\tightlist}{\setlength{\itemsep}{#1}\setlength{\parskip}{0pt}\ifnum\csname @itemdepth\endcsname>1\setlength{\itemsep}{0.1em}\fi}}
+        \newcommand{\spacedslide}[1][0.5em]{\roomyitems[#1]\setlength{\parskip}{0.45em}}
+        \setbeamertemplate{title page}{%
+          \centering
+          \includegraphics[width=0.27\textwidth,height=1.1cm,keepaspectratio]{../logos/01-standard-black-text.png}\hfill
+          \includegraphics[width=0.40\textwidth,height=1.1cm,keepaspectratio]{../logos/creem-long.png}\hfill
+          \includegraphics[width=0.19\textwidth,height=1.1cm,keepaspectratio]{../logos/SLT-Logo-2016-300dpi-Regular.jpg}\par
+          \vspace{0.35cm}
+          {\LARGE\inserttitle\par}
+          \vspace{0.35cm}
+          {\normalsize\insertsubtitle\par}
+          \vspace{0.25cm}
+          {\small UNDP-GEF Project\par}
+          \vspace{0.15cm}
+          {\small ``Integrated Community-based Management of High Value Mountain Ecosystems in Southern Kyrgyzstan for Multiple Benefits''\par}
+          \vfill
+          {\fontsize{6}{7}\selectfont
+          \textcopyright{} 2026 University of St Andrews (Centre for Research into Ecological and Environmental Modelling, CREEM), Snow Leopard Trust, developed within the framework of the UNDP-GEF Pamir-Alai project. Licensed under CC BY 4.0. You may share and adapt these materials if you keep this credit and indicate any changes.\par}
+        }
+classoption: t
+urlcolor: teal
+---
+
+## Welcome
+
+This is an course on **methods for monitoring biodiversity**, especially for **estimating species' distributions** and **estimating species' population sizes**
+
+\vspace{1em}
+
+| Day | Session | Topic |
+|:----|:--------|:------|
+| 1 | 0 | Course outline |
+| 1 | 1 | Introduction to Biodiversity Monitoring and R |
+| 1 | 2 | Plot sampling |
+| 2 | 3 | Occupancy Modelling |
+| 2 | 4 | Species Distribution Models |
+| 3 | 5 | Distance Sampling |
+| 3 | 6 | Spatial Capture-Recapture Models |
+| 3 | 7 | Conclusion and Next Steps |
+
+## Welcome
+
+- Most sessions have four components:
+   1. **theory** lecture (slides, instructor-led)
+   2. **practical** lecture (slides, instructor-led)
+   3. **coding** practice (participant)
+   4. **interactive games** (participant)
+
+\vspace{0.5em}
+
+- More theoretical or advanced material indicated by "*"
+
+\vspace{0.5em}
+
+- This course specifically developed for monitoring biodiversity **in Southern Kyrgyzstan**.
+
+\vspace{0.5em}
+
+- We use relevant species for case studies and examples.
+
+\vspace{0.5em}
+
+- All examples and data are **hypothetical** and **simplified** to fit into the allocated time. Real world surveys are usually more complex.
+
+## Welcome
+
+- The goal of this *workshop* is to **train the trainers** by giving you the **teaching materials** and **the knowledge** needed to pass on to others.
+
+\vspace{0.5em}
+
+- The goal of this *project* is to **develop biodiversity monitoring capacity** in Kyrgyzstan.
+
+\vspace{0.5em}
+
+- Targets two main audiences: university students and conservation practitioners.
+
+\vspace{0.5em}
+
+- We want you to leave feeling that you can pass on this material (possibly after some extra work)
+
+\vspace{0.5em}
+
+- \alert{Your feedback is very welcome!}
+
+
+## About us
+
+::: columns
+
+:::: {.column width="50%"}
+::: {.text-center}
+![](figures/OW.jpg){width=60%}
+
+**Oliver Wearn**
+
+Ecologist 
+
+Senior Conservation Scientist
+
+Snow Leopard Trust
+:::
+::::
+
+:::: {.column width="50%"}
+::: {.text-center}
+![](figures/Ian3.jpg){width=60%}
+
+**Ian Durbach**
+
+Statistician 
+
+Senior Research Fellow
+
+University of St Andrews
+:::
+::::
+
+:::
+
+## Acknowledgements
+
+- Kyrgyz-Turkish Manas University Faculty of Sciences
+
+\vspace{1em}
+
+- Ministry of Natural Resources, Ecology and Technical Supervision of the Kyrgyz Republic
+
+\vspace{1em}
+
+- All local working group members
+
+\vspace{1em}
+
+- Professor Alison Johnston, University of St Andrews
+
+\vspace{1em}
+
+- UNDP-GEF Project ``Integrated Community-based Management of High Value Mountain Ecosystems in Southern Kyrgyzstan for Multiple Benefits''
+
+## Ready for the practicals
+
+::: columns
+
+:::: {.column width="72%"}
+Software required:
+
+1.  R: <https://cran.rstudio.com/>
+2.  RStudio: <https://posit.co/download/rstudio-desktop>
+::::
+
+:::: {.column width="25%"}
+\centering
+\qrcode[height=1.8cm]{https://github.com/iandurbach/biodiversity-monitoring-course-mini}
+
+\scriptsize Scan for workshop material
+::::
+
+:::
+
+Workshop material: 
+
+1. Download from <https://github.com/iandurbach/biodiversity-monitoring-course-mini>
+2. Click on green `<Code>` button, select "Download .zip"
+3. Unzip into dedicated `biodiversity` workshop folder
+4. Find and open (double-click) `biodiversity_monitoring.Rproj`. This opens the project in RStudio.
+5. Install required packages by typing the following into the RStudio console: `source("install_workshop_packages.R")` 

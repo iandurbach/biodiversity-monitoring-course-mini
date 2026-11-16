@@ -1,0 +1,51 @@
+DISTANCE SAMPLING
+=================
+
+Bibliography and linked learning resources extracted from the course QMDs.
+QMDs reviewed:
+  01_distance_sampling.qmd
+  02_distance_sampling_practical.qmd
+Checked: 27 October 2026.
+
+LITERATURE
+----------
+
+[1] Buckland, S. T. (2006). Point-Transect Surveys for Songbirds: Robust Methodologies.
+    The Auk, 123(2), 345-357.
+    DOI: https://doi.org/10.1093/auk/123.2.345
+
+[2] Centre for Research into Ecological and Environmental Modelling (CREEM), University
+    of St Andrews (n.d.). Introductory distance sampling training materials. Online
+    course.
+    URL: https://distancesampling.org/online-course/
+
+[3] CREEM, University of St Andrews (2024, November). Line transect estimation using R.
+    Introductory distance sampling training materials, Exercise 2.
+    URL: https://distancesampling.org/online-course/02-detfns/R-prac/Pr2-instructions.html
+
+[4] CREEM, University of St Andrews (2019). Choosing a Detection Function / Detection
+    functions and effective strip width. Introductory distance-sampling workshop, St
+    Andrews. Lecture slides, Block B.
+    URL: https://workshops.distancesampling.org/standrews-2019/intro/lectures/BlockB-detfns-esw-f0.pdf
+
+[5] Distance project (n.d.). Distance sampling software, resources and training.
+    URL: https://distancesampling.org/
+
+[6] Distance package authors (n.d.). ds: Fit detection functions and calculate abundance
+    from line or point transect data; convert_units: Convert units for abundance
+    estimation. Distance R package reference.
+    URL: https://distancesampling.org/Distance/reference/ds.html
+    URL: https://distancesampling.org/Distance/reference/convert_units.html
+
+[7] Davletbakov, A. T. (2026). Guidelines for monitoring the abundance and range of
+    Desert monitor (Varanus griseus caspius) within the Kyrgyz Republic. Bishkek.
+    Prepared with support from the GEF–UNDP Pamir Alai Project; commissioned by the
+    International Snow Leopard Trust.
+
+[8] Davletbakov, A. T. & Koshkin, M. A. (2026). Brief Methodological Recommendations for
+    Conducting Recording of the Golden Eagle and Other Birds of Prey in Kyrgyzstan
+    (Spring–Summer 2026). Institute of Biology, National Academy of Sciences of the
+    Kyrgyz Republic, and Fauna & Flora International, Kyrgyz Republic. Bishkek.
+
+[9] University of St Andrews (n.d.). Distance Sampling I–V. Original teaching lectures
+    identified as L04–L08 in QMD source comments.

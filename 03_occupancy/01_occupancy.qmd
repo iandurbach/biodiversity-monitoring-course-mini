@@ -1,0 +1,884 @@
+---
+title: Occupancy Modelling
+subtitle: Biodiversity Monitoring Course, Module 3
+fontsize: 10pt
+format:
+  beamer:
+    theme: metropolis
+    incremental: false
+    slide-level: 2
+    pdf-engine: xelatex
+    syntax-highlighting: tango
+    include-in-header:
+      text: |
+        \usepackage{arydshln}
+        \usepackage{animate}
+        \definecolor{bl}{rgb}{0.16,0.32,0.75}
+        \definecolor{rd}{rgb}{0.82,0.1,0.26}
+        \definecolor{grn}{rgb}{0.55,0.71,0.0}
+        \providecommand{\hig}[1]{\textcolor{grn}{#1}}
+        \providecommand{\hir}[1]{\textcolor{rd}{#1}}
+        \setbeamertemplate{title page}{%
+          \centering
+          \includegraphics[width=0.27\textwidth,height=1.1cm,keepaspectratio]{../logos/01-standard-black-text.png}\hfill
+          \includegraphics[width=0.40\textwidth,height=1.1cm,keepaspectratio]{../logos/creem-long.png}\hfill
+          \includegraphics[width=0.19\textwidth,height=1.1cm,keepaspectratio]{../logos/SLT-Logo-2016-300dpi-Regular.jpg}\par
+          \vspace{0.35cm}
+          {\LARGE\inserttitle\par}
+          \vspace{0.35cm}
+          {\normalsize\insertsubtitle\par}
+          \vspace{0.25cm}
+          {\small UNDP-GEF Project\par}
+          \vspace{0.15cm}
+          {\small ``Integrated Community-based Management of High Value Mountain Ecosystems in Southern Kyrgyzstan for Multiple Benefits''\par}
+          \vfill
+          {\fontsize{6}{7}\selectfont
+          \textcopyright{} 2026 University of St Andrews (Centre for Research into Ecological and Environmental Modelling, CREEM), Snow Leopard Trust, developed within the framework of the UNDP-GEF Pamir-Alai project. Licensed under CC BY 4.0. You may share and adapt these materials if you keep this credit and indicate any changes.\par}
+        }
+classoption: t
+urlcolor: teal
+---
+
+
+```{r setup, echo=FALSE,warning=FALSE,message=FALSE}
+library(tidyverse); library(cowplot); library(nimble); library(primer)
+library(latex2exp); library(ggthemes); library(popbio)
+library(plotrix); library(scico); library(viridis); library(ggridges)
+library(gganimate); library(Distance); library(latex2exp)
+# library(oSCR); 
+
+#global par
+knitr::opts_knit$set(global.par = TRUE) 
+
+#folder where images are stored
+knitr::opts_chunk$set(fig.path="figures/01_occupancy-")
+
+#function to control font size of r code in code chunks
+def.chunk.hook  <- knitr::knit_hooks$get("chunk")
+knitr::knit_hooks$set(
+  chunk = function(x, options){
+            x <- def.chunk.hook(x, options)
+            ifelse(options$size != "normalsize", 
+                   paste0("\n \\", options$size,"\n\n", x, "\n\n \\normalsize"), 
+                   x)
+})
+
+# tiny < scriptsize < footnotesize < small < 
+# normalsize < large	< Large < LARGE < huge < Huge
+
+# place images using tikz (maximum flexibility for placement) 
+#\begin{tikzpicture}[remember picture, overlay]
+#\node[xshift=-2.5cm, yshift=-2.4cm] at (current page){
+
+# place equations using tikz (maximum flexibility for placement) 
+# Original title illustration omitted.
+#\node[xshift=3.7cm, yshift=-1.5cm] at (current page){\small $z_1 \sim \mbox{Bernoulli}(\psi_1)$};
+#\node[xshift=3.7cm, yshift=-2.1cm] at (current page){\small $z_{it} \sim \mbox{Bernoulli}(\psi_{it})$};
+#\node[xshift=3.7cm, yshift=-2.7cm] at (current page){\small $\psi_{it} = (1-z_{it-1})\gamma + z_{it-1}(1-\varepsilon)$};
+#\node[xshift=3.7cm, yshift=-3.3cm] at (current page){\small $y_{it} \sim \mbox{binomial}(J_{it},p\times z_{it})$};
+#\end{tikzpicture}
+
+
+grn <- rgb(0.55, 0.71, 0.0, maxColorValue = 1)
+rd <- rgb(0.82, 0.1, 0.26, maxColorValue = 1)
+bl <- rgb(0.16, 0.32, 0.75, maxColorValue = 1)
+```
+
+## Learning outcomes
+
+By the end of the lecture and practical, you should be able to:
+
+- Distinguish occupancy, site use and detection probability.
+- Design repeated surveys.
+- Explain model assumptions and hierarchical model structures$^*$.
+- Organise detection histories and site and visit covariates for analysis.
+- Fit and compare single-season occupancy models in R using `unmarked`.
+- Interpret habitat relationships with detection and occupancy.
+- Map a species' range using occupancy predictions.
+- Describe how multi-season models estimate changes in occupancy.
+
+# Introduction to occupancy
+
+## What is an occupancy model
+
+The purpose of the method is to determine which **sites** are used by a species, *even when the animal is not detected during every survey*. 
+
+\vspace{1em}
+
+The method allows us to estimate not only species presence but also the probability of detection and the influence of different environmental factors on animal distribution.
+
+\vspace{1em}
+
+**In Simple Terms**
+
+If no signs of an animal are found, this does not necessarily mean that the animal is absent. It may simply not have been detected during the survey. 
+
+Occupancy models helps distinguish true species absence from detection error and provides a more realistic picture of animal distribution.
+
+## Building an occupancy model
+
+1. Select survey sites, such as transects or plots.
+
+2. Survey each site several times during the season.
+
+3. Record the following for each visit:
+\vspace{-0.8em}
+    - \small Species detected (1); Species not detected (0). \normalsize
+
+4. At the same time, collect data on environmental factors (covariates), for example:
+\vspace{-0.8em}
+    - \small Elevation above sea level; Vegetation cover; Distance to water. \normalsize
+
+5. Use a statistical model to estimate:
+\vspace{-0.8em}
+    - \small The probability that a site is occupied $(\psi)$;
+    - \small The probability of detecting the species $(p)$;
+    - \small Effects of environmental factors on either $(\psi)$ or $(p)$. \normalsize
+
+\vspace{1em}
+
+\alert{More details on all of these later!}
+
+## Relevance of *occurrence* in ecology
+
+Occurrence is an important state variable of interest: 
+
+- only viable option if abundance is difficult to monitor
+    - logistical (eg, areas hard to access)
+    - methodological (eg, individuals hard to count)
+- often presence and absence is the objective
+    - disease
+    - invasions
+    - recovery / reintroductions
+- identical to abundance when a site can be occupied by one 'biological unit'
+    - individual, a breeding pair, or family group
+    - number of occupied sites = number of biological units
+- the basis for species distribution and species richness
+
+## Occupancy models in ecology - why?
+
+Objective of occupancy modelling is to draw inferences about distribution and its determinants
+
+- in a perfect world we would use logistic regression
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=3.9cm, yshift=1cm] at (current page){
+\includegraphics[height=1.1in]{figures/occbook}};
+\end{tikzpicture}
+
+## Occupancy models in ecology - why?
+
+Objective of occupancy modelling is to draw inferences about distribution and its determinants
+
+- in a perfect world we would use logistic regression
+
+- in reality data are subject to measurement error
+    - failure to detect a species when present
+    - false negative errors common in ecology
+    - (false positives also important, less common)
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=3.9cm, yshift=1cm] at (current page){
+\includegraphics[height=1.1in]{figures/occbook}};
+\end{tikzpicture}
+
+## Occupancy models in ecology - why?
+
+Objective of occupancy modelling is to draw inferences about distribution and its determinants
+
+- in a perfect world we would use logistic regression
+
+- in reality data are subject to measurement error
+    - failure to detect a species when present
+    - false negative errors common in ecology
+    - (false positives also important, less common)
+
+- ignoring measurement can result in misleading inference
+    - under-estimation of occupancy
+    - habitat associations may be incorrect
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=3.9cm, yshift=1cm] at (current page){
+\includegraphics[height=1.1in]{figures/occbook}};
+\end{tikzpicture}
+
+## Occupancy models in ecology - why?
+
+Objective of occupancy modelling is to draw inferences about distribution and its determinants
+
+- in a perfect world we would use logistic regression
+
+- in reality data are subject to measurement error
+    - failure to detect a species when present
+    - false negative errors common in ecology
+    - (false positives also important, less common)
+
+- ignoring measurement can result in misleading inference
+    - under-estimation of occupancy
+    - habitat associations may be incorrect
+
+- \alert{\textbf{occupancy modelling provides a sampling and analysis framework to study distribution when occurrence is observed imperfectly}}
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=3.9cm, yshift=1cm] at (current page){
+\includegraphics[height=1.1in]{figures/occbook}};
+\end{tikzpicture}
+
+<!-- Otter example: proposed teaching design, not an existing national survey.
+The abundance numbers and logistic relationships below are simulated/assumed
+for illustration, not estimates from Kyrgyzstan. The map is hypothetical.
+The review reports no confirmed otter detections in the Chon-Alai field surveys.
+If every detection history is zero, occupancy and detection cannot be estimated
+separately from those data alone. Explain this verbally.
+-->
+
+# Example: Central Asian otter
+
+## Example: Central Asian otter
+
+\begin{center}
+\includegraphics[width=0.75\textwidth]{figures/otter/river-survey.pdf}
+\end{center}
+
+Suppose representative sites (line transects) are surveyed.
+
+- river network: $L = 180$ km; surveyed sites: $l = 9$ km
+- suppose we count $n = 6$ different otters
+- coverage: $p_c = l/L = 0.05$
+
+<!-- This is the one-dimensional analogue of the whale strip-sampling expansion:
+length replaces area for a river-associated population. Assume a population
+snapshot, equal site inclusion probabilities, and no double counting. These
+conditions are deliberately idealized; spraint counts are not individual counts.
+-->
+
+## Example: Central Asian otter
+
+\begin{center}
+\includegraphics[width=0.75\textwidth]{figures/otter/river-survey.pdf}
+\end{center}
+
+Suppose representative sites (line transects) are surveyed.
+
+- river network: $L = 180$ km; surveyed sites: $l = 9$ km
+- suppose we count $n = 6$ different otters
+- coverage: $p_c = l/L = 0.05$
+
+Plot sampling gives $\hat N = \frac{n}{p_c} = \frac{6}{0.05} = 120\text{ otters}.$
+
+## Example: Central Asian otter
+
+\begin{center}
+\includegraphics[width=0.75\textwidth]{figures/otter/river-survey.pdf}
+\end{center}
+
+\alert{\textbf{What about those we missed?}} 
+
+\vspace{-0.5em}
+
+\alert{\textbf{Signs reveal presence, but do not count different individuals}}
+
+## Example: Estimating distributional range
+
+\begin{columns}[T]
+\begin{column}{0.51\textwidth}
+\begin{itemize}
+\item We leave the goal of abundance aside for now (we return to it later)
+\item Goal: define where otters are \textbf{present} and investigate influences on presence.
+\item Estimate occupancy probability for each site and map it across the river network.
+\item Apply a chosen probability threshold to obtain a mapped range.
+\end{itemize}
+\end{column}
+\begin{column}{0.47\textwidth}
+\includegraphics[width=\textwidth]{figures/otter/otter-protocol.jpg}
+\scriptsize Credit: A. Davletbakov.
+\end{column}
+\end{columns}
+
+<!-- Range means seasonal distribution along the river network, not a breeding
+range or a count of territories. One otter can use several sites. The photo is
+an illustration from the protocol, not evidence of an observation in Kyrgyzstan.
+-->
+
+## Example: fixed shoreline transects
+
+\begin{center}
+\includegraphics[width=0.96\textwidth,height=0.64\textheight,keepaspectratio]{figures/otter/river-survey.pdf}
+\end{center}
+
+\small
+\textbf{Here, site = transect = a fixed 600 m river section surveyed along its bank.}
+
+Example: select 60 sites across tributaries. Search the same sites
+on 3 visits, about a week apart, within 3--4 weeks, using consistent effort.
+
+## Example: Survey every site, or a subsample?
+
+\small
+Define the region as \textbf{all river sites}, including those without previous records.
+
+| Survey coverage | Workflow |
+|:--|:--|
+| **Every site**, with repeat visits | 1. Survey otters repeatedly at every site. 2. Estimate detection probability and use each site's survey history to map its probability of use. |
+| **A representative subsample**, with repeat visits | 1. Survey otters repeatedly at sampled sites. 2. Estimate the occupancy--habitat relationship, accounting for detection. 3. Apply it to habitat maps to predict occupancy at unsurveyed sites. |
+
+\footnotesize
+Predicting across the whole network requires habitat data for every site, obtainable from imagery or existing maps. Predictions are unreliable where habitat conditions are not represented in the survey sample.
+
+<!-- Full coverage removes spatial sampling gaps, not observation error.
+A habitat-based psi map describes modeled probabilities; at surveyed sites,
+detection histories can additionally inform conditional probabilities of use.
+A design-based regional occupancy estimate does not itself locate occupied
+unsurveyed sites. Mapping them requires a predictive model and covariates.
+Extrapolation to unsampled catchments assumes relationships transfer; extrapolation
+outside the sampled habitat range needs particular caution and validation.
+-->
+
+<!-- The 60 sites, 600 m length, and three visits are teaching choices, not
+validated prescriptions. Pilot work should assess detection, access, spacing,
+and timing. Choose a locally feasible short period of reasonably stable flow
+and site use; do not combine summer and winter as single-season repeats.
+Otter movements can correlate adjacent sites: non-overlap does not establish
+independence. Spread sites across tributaries and assess remaining dependence.
+-->
+
+## Example: Occupancy vs site use?
+
+- **Occupancy:** probability a site is occupied throughout the survey period;
+  its occupied/unoccupied status stays constant.
+- **Site use:** a better interpretation when animals move in and out of small
+  sites within a larger home range, as otters may do along our transects.
+
+\begin{center}
+\includegraphics[width=0.92\textwidth]{figures/otter/occupancy-site-use.pdf}
+\end{center}
+
+All three sites are used, although the otter is not always present in each.
+
+Our map describes **site use**, not permanent residence.
+
+<!-- Speaker notes:
+The red dots show animal locations, not detections or detection histories.
+For sign surveys, signs may remain after an otter leaves. Detection therefore
+includes sign availability and the observer finding and identifying those signs.
+A use interpretation is appropriate for temporary movements under suitable
+assumptions (e.g. random availability between visits conditional on modeled
+covariates); it is not a general solution to closure violations or correlated
+movement. Site size and survey duration determine the meaning of the estimate.
+Occupancy is a species-level state, not a requirement that the same individual
+remain at the site. Small-site use is not the fraction of time spent there.
+Sources: MacKenzie et al., Occupancy Models to Study Wildlife (USGS, 2005),
+https://pubs.usgs.gov/fs/2005/3096/fs20053096.pdf;
+Rota et al. (2009), Occupancy estimation and the closure assumption,
+https://doi.org/10.1111/j.1365-2664.2009.01734.x.
+-->
+
+## Example: factors influencing occupancy and detection
+
+\begin{columns}[T]
+\begin{column}{0.56\textwidth}
+\small
+\begin{itemize}
+\item \textit{Hypothesis}: sites with more riparian cover are more likely to be used.
+\item \textit{Hypothesis}: recent high flows wash signs away, reducing detection.
+\item Record cover (\%) per site and high-flow days in the preceding week per visit.
+\item Record confirmed fresh signs as $1$; a completed search without confirmed signs as $0$.
+\end{itemize}
+\end{column}
+\begin{column}{0.42\textwidth}
+\includegraphics[width=\textwidth]{figures/otter/tracks-protocol.png}
+\scriptsize Credit: A. Davletbakov.
+\end{column}
+\end{columns}
+
+<!-- Record sign location and freshness using a consistent field definition;
+photograph and map signs to avoid recounting the same persistent evidence.
+Freshness and identification require training. Keep uncertain evidence flagged
+for review, and do not accept feeding remains alone as confirmed otter signs.
+Use cameras or expert review to resolve identification where feasible.
+The model assumes stable site use during the window and conditionally
+independent detections. Calling occupancy 'use' does not remove those assumptions.
+-->
+
+## Example: factors influencing occupancy and detection
+
+- Occupancy increases with riparian cover.
+- Detection decreases with recent high flows.
+
+\begin{center}
+\includegraphics[width=0.98\textwidth]{figures/otter/relationships.pdf}
+\end{center}
+
+Use the habitat relationship to predict $\psi$ across the network; the detection
+model accounts for missed signs in the survey data.
+
+<!-- Speaker note: these are simulated/assumed logistic relationships, not
+fitted findings. They illustrate the hypotheses on the preceding slide.
+No inference about local otter occupancy can be drawn from these curves.
+Reproduce both figures with: Rscript 03_occupancy/code/otter/figures.R (from repo root).
+-->
+
+## Example: From occupancy probabilities to a range map
+
+\begin{center}
+\includegraphics[width=\textwidth]{figures/otter/range-map.pdf}
+\end{center}
+
+Potential workflow:
+
+1. Predict $\hat\psi_i$ for every site from its riparian cover.
+2. Choose a threshold to define the range e.g.\ 0.5
+3. Include sites with $\hat\psi_i$ above the threshold in the mapped range.
+
+\footnotesize
+The threshold changes the mapped extent. Always retain the probability map and its
+uncertainty alongside the range boundary.
+
+<!-- Speaker note: both maps use simulated/assumed relationships, not local
+estimates. The 0.5 threshold is illustrative, not a biologically established
+boundary or a validated classification rule. Select a threshold appropriate to
+monitoring objectives and assess sensitivity and predictive performance.
+Below-threshold sites are not confirmed absences. This is seasonal predicted
+range within the defined river network, not the species' complete national range.
+The schematic omits uncertainty for readability; a fitted analysis should map it.
+-->
+
+## Example: use of the current protocol
+
+Current protocol can produce data for occupancy modelling. Things to consider
+
+- **Habitat covariate coverage:** need to map all river sites and their riparian cover; ensure survey sites are representative.
+- **Use within-season repeats:** revisit all sites on a fixed schedule;
+  summer and winter surveys are separate seasons.
+- **Capture complete records:** add site ID, visit number, transect length, any habitat covariates not obtained by imagery e.g. flow conditions; record nondetections ($0$) and missed visits (\texttt{NA}).
+- **Improve detection:** train observers to distinguish otter from mink;
+  photograph signs and avoid recounting persistent signs between visits.
+- **Integrating data sources:** shoreline searches, camera traps, interviews.
+
+# Data and design requirements
+
+## How occupancy data are collected
+
+Spatially replicated, repeated visits design for inference about region:
+
+- define region of interest
+- repeated visits to estimate $p$ 
+- site-by-visit data structure
+- states are *partially* observed
+- estimate $p$ to infer $\psi$
+
+<!-- \begin{tikzpicture}[remember picture, overlay] -->
+<!-- \node[xshift=3cm, yshift=1cm] at (current page){ -->
+<!-- \includegraphics[height=1.3in]{figures/mpdesign_occ}}; -->
+<!-- \end{tikzpicture} -->
+
+## How occupancy data are collected
+
+Spatially replicated, repeated visits design for inference about region:
+
+- define region of interest
+- identify sites to survey
+- repeated visits to estimate $p$ 
+- site-by-visit data structure
+- states are *partially* observed
+- estimate $p$ to infer $\psi$
+
+Notation:
+
+- $p$ per-occasion probability of detecting a species when present
+- $\psi$ probability site is occupied (or proportion of occupied sites)
+- $y_{ij}$ site-by-occasion binary detection data
+    - $i = 1, ..., M$ sites ($M$ is the number of sites)
+    - $j = 1, \ldots,J$ occasions ($J$ is the number of occasions) 
+
+<!-- \begin{tikzpicture}[remember picture, overlay] -->
+<!-- \node[xshift=3cm, yshift=1cm] at (current page){ -->
+<!-- \includegraphics[height=1.3in]{figures/mpdesign_occ}}; -->
+<!-- \end{tikzpicture} -->
+
+## How occupancy data are collected
+
+Spatially replicated, repeated visits design for inference about region:
+
+- define region of interest
+- identify sites to survey
+- repeated visits to estimate $p$ 
+- site-by-visit data structure
+- states are *partially* observed
+- estimate $p$ to infer $\psi$
+
+Notation:
+
+- $y_{ij}$ binary detection data
+    - $i = 1, ..., M$ sites
+    - $j = 1, \ldots,J$ visits
+    - eg, $M=10$, $J=3$
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=3cm, yshift=-0.5cm,draw=black,rounded corners=3pt,thick] at (current page){
+\scalebox{0.9}{
+\begin{tabular}{l|c c c|c}
+Visit    & 1 & 2 & 3 & $\sum y$ \\ \hline
+Site 1   & 0 & 0 & 0 & 0 \\
+Site 2   & 0 & 0 & 0 & 0 \\
+Site 3   & 0 & 1 & 0 & 1 \\
+Site 4   & 1 & 1 & 0 & 2 \\
+Site 5   & 0 & 0 & 1 & 1 \\
+Site 6   & 0 & 0 & 0 & 0 \\
+Site 7   & 0 & 1 & 0 & 1 \\
+Site 8   & 0 & 1 & 0 & 1 \\
+Site 9   & 0 & 0 & 1 & 1 \\
+Site 10  & 0 & 1 & 1 & 2 \\
+\end{tabular}}};
+\end{tikzpicture}
+
+## How occupancy data are collected
+
+Once 'sites' have been defined, detection-nondetection data can be collected using a variety of well-established methods/technologies:
+
+- camera traps
+- audio-recordings
+- sign surveys
+- aerial surveys 
+- drones
+- hair snares
+- interviews
+- ... probably many more
+
+\vspace{0.5cm}
+
+Each method produces *at least* species detection, but can also produce individual identification too. Our focus is \alert{unmarked populations}.
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=3.5cm, yshift=0.3cm] at (current page){
+\includegraphics[height=1.2in]{figures/bears}};
+\node[xshift=0.1cm, yshift=0.3cm] at (current page){
+\includegraphics[height=1.2in]{figures/camtrap}};
+\node[xshift=4.5cm, yshift=-1.5cm] at (current page){\small \textit{\textcolor{gray}{image: Cat Sun}}};
+\end{tikzpicture}
+
+## Design considerations for occupancy studies
+
+Good designs are more likely to produce reliable estimates of $\psi$ and $p$ 
+
+- multiple randomly/representatively selected sites (informs $\psi$)
+- multiple sampling occasions at (at least some) sites (informs $p$)
+- satisfy occupancy modelling assumptions (essential for $\psi$ and $p$)
+
+## Design considerations for occupancy studies
+
+Good designs are more likely to produce reliable estimates of $\psi$ and $p$ 
+
+- multiple randomly/representatively selected sites (informs $\psi$)
+- multiple sampling occasions at (at least some) sites (informs $p$)
+- satisfy occupancy modelling assumptions (essential for $\psi$ and $p$)
+
+Obvious questions arise:
+
+- how many sites?
+- how many occasions?
+- trade-off: more sites with fewer visits *vs*. fewer sites with more visits?
+
+\alert{Specific to species, system, and objective, best explored through simulation}$^{2}$
+
+\vspace{0.3cm}
+
+\footnotetext[2]{Kéry \& Royle (2015). Applied Hierarchical Modeling in Ecology: Analysis of distribution, abundance and species richness in R and BUGS: Volume 1: Prelude and Static Models. Academic Press.}
+
+# Model formulation and estimation$^*$
+
+## Occupancy modelling assumptions
+
+1 - \alert{Closure}:
+
+- occupancy states do not change over the course of the study
+- inference robust if violations are random and infrequent
+- if violated interpret as probability of **use** (rather than occupancy)
+
+## Occupancy modelling assumptions
+
+\textcolor{gray}{1 - Closure: occupancy states do not change}
+
+2 - \alert{No false positive errors}:
+
+- no detections at unoccupied/unused sites
+    - species misidentification
+    - surveyor ability
+- violation leads to strong bias in occupancy
+    - discard observations with any identification uncertainty
+    - treat uncertain detections as zero
+    - use false positive models
+    
+## Occupancy modelling assumptions
+
+\textcolor{gray}{1 - Closure: occupancy states do not change}
+
+\textcolor{gray}{2 - No false positive errors: detection made without error}
+
+3 - \alert{Independence} (occupancy \& detection):
+
+- occupancy at one site independent of occupancy at another
+- detection at one site independent of detection at another
+- detection during one visit independent of detection at another
+- violations result in spatial autocorrelation, and hence bias
+
+## Occupancy modelling assumptions
+
+\textcolor{gray}{1 - Closure: occupancy states do not change}
+
+\textcolor{gray}{2 - No false positive errors: detection made without error}
+
+\textcolor{gray}{3 - Independence: no unmodelled spatial autocorrelation}
+
+4 - \alert{Homogeneity of detection}:
+
+- no *unmodelled* heterogeneity in detection
+- violation results in large negative biases in occupancy
+
+## Occupancy modelling assumptions
+
+\textcolor{gray}{1 - Closure: occupancy states do not change}
+
+\textcolor{gray}{2 - No false positive errors: detection made without error}
+
+\textcolor{gray}{3 - Independence: no unmodelled spatial autocorrelation}
+
+\textcolor{gray}{4 - Homogeneity of detection: variation in $p$ modelled }
+
+5 - \alert{Parametric assumptions}:
+
+- Bernoulli/binomial distributions reasonable abstractions for the species/system being studied
+
+
+## Occupancy modelling assumptions
+
+1 - \alert{Closure}: occupancy states do not change
+
+2 - \alert{No false positive errors}: detection made without error
+
+3 - \alert{Independence}: no unmodelled spatial autocorrelation
+
+4 - \alert{Homogeneity of detection}: variation in $p$ modelled
+
+5 - \alert{Parametric assumptions}: statistical distributions reasonable
+
+\vspace{0.2cm}
+Assumptions can be satisfied by:
+
+- good study design 
+- knowledge of species / system 
+- training & data collection protocols
+
+
+## How occupancy data are modelled
+
+\alert{Hierarchical occupancy models} are sequential models with:
+
+- a sub-model for the occupancy (\alert{true state})
+- a sub-model for the imperfect data (\alert{observations})
+- observation sub-model is \alert{conditional} on the true state
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=0cm, yshift=-1.8cm] at (current page){
+\includegraphics[height=1.2in]{figures/mpdesign_occ2}};
+\end{tikzpicture}
+
+
+## Hierarchical occupancy model
+
+Hierarchical occupancy model description (\alert{using distributional statements})
+
+\underline{State model}:
+
+- standard logistic regression (eg, site-level covariates)
+- a model for the\alert{ data you wish you had}
+- model at the level of the site ($i$)
+$$z_i \sim \mbox{Bernoulli}(\psi_i)$$
+$$\mbox{logit}(\psi_i) = \beta_{0} + \beta_{1}x_{i1} + \beta_{2}x_{i2} + \cdots$$
+\vspace{2em}
+
+- $\mbox{logit}(\psi_i)$ means $\log(\frac{\psi_i}{1-\psi_i})$, the "logit" transformation
+
+## Hierarchical occupancy model
+
+Hierarchical occupancy model description (\alert{using distributional statements})
+
+\underline{Observation model}:
+
+- another logistic regression (ie, site- & visit-level covariates)
+- a model for the imperfect \alert{data you have}
+- conditionally linked to latent state
+- model at the level of the *site-visit* ($ij$)
+$$y_{ij}|z_i \sim \mbox{Bernoulli}(p_{ij}z_{i})$$
+$$\mbox{logit}(p_{ij}) = \alpha_{0} + \alpha_{1}x_{ij1} + \alpha_{2}x_{ij2} + \cdots$$
+
+## Estimating $\psi_i$ and $p$ (and other parameters)
+
+Having collected data, defined the model, and defined the corresponding likelihood, we can fit the model to data using maximum likelihood:
+
+- ML procedure to find most likely values given the data
+    - maximum likelihood estimates of $\psi$ and $p$ (MLEs)
+    - estimate associated standard errors (SEs)
+    - estimate associated confidence intervals (CIs)
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=0cm, yshift=-2cm] at (current page){
+\includegraphics[height=1.3in]{figures/mle}};
+\node[xshift=0cm, yshift=-4cm] at (current page){
+\footnotesize \textcolor{gray}{Barata et al. (2017). Scientific Reports}};
+\end{tikzpicture}
+
+## Estimating $\psi_i$ and $p$ (and other parameters)
+
+Having collected data, defined the model, and defined the corresponding likelihood, we can fit the model to data using maximum likelihood:
+
+- ML procedure to find most likely values given the data
+    - maximum likelihood estimates of $\psi$ and $p$ (MLEs)
+    - estimate associated standard errors (SEs)
+    - estimate associated confidence intervals (CIs)
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=0cm, yshift=-1.8cm] at (current page){
+\includegraphics[height=1.5in]{figures/snek}};
+\node[xshift=0cm, yshift=-4cm] at (current page){
+\footnotesize \textcolor{gray}{Bauder et al. (2017). Journal of Herpetology}};
+\end{tikzpicture}
+
+## Estimating $\psi_i$ and $p$ (and other parameters)
+
+Having collected data, defined the model, and defined the corresponding likelihood, we can fit the model to data using maximum likelihood:
+
+- ML procedure to find most likely values given the data
+    - maximum likelihood estimates of $\psi$ and $p$ (MLEs)
+    - estimate associated standard errors (SEs)
+    - estimate associated confidence intervals (CIs)
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=0cm, yshift=-1.8cm] at (current page){
+\includegraphics[height=1.5in]{figures/chickadee_det}};
+\node[xshift=0cm, yshift=-4cm] at (current page){
+\footnotesize \textcolor{gray}{Johnston et al. (2018). Methods in Ecology and Evolution}};
+\end{tikzpicture}
+
+
+## Estimating $\psi_i$ and $p$ (and other parameters)
+
+Having collected data, defined the model, and defined the corresponding likelihood, we can fit the model to data using maximum likelihood:
+
+- ML procedure to find most likely values given the data
+    - maximum likelihood estimates of $\psi$ and $p$ (MLEs)
+    - estimate associated standard errors (SEs)
+    - estimate associated confidence intervals (CIs)
+- We will use `unmarked`$^4$ to do this, but other options exist
+    - eg, `PRESENCE` - standalone, windows-based
+    - eg, Program `MARK` - standalone, windows-based
+    - eg, `RMark` - `R` package built around `MARK`
+
+\footnotetext[4]{Fiske \& Chandler (2011). `Unmarked`: an `R` package for fitting hierarchical models of wildlife occurrence and abundance. Journal of statistical software.}
+
+
+# Monitoring change through time
+
+## Multi-season occupancy: is the range changing?
+
+A single-season model describes where a species occurs during one survey period.
+A **multi-season occupancy model** links those periods through time.
+
+For otter monitoring, we might ask:
+
+- Are more or fewer river sites being used each year?
+- Where is site use being gained, maintained or lost?
+- Are changes associated with riparian habitat restoration or degradation?
+
+\vspace{0.3cm}
+
+\alert{Fewer detections could mean fewer sites used, poorer detection, or both.}
+
+<!-- Introductory extension only; fitting multi-season models is not part of
+this practical. Source: MacKenzie et al. (2003), Estimating site occupancy,
+colonization, and local extinction when a species is detected imperfectly.
+Ecology 84: 2200--2207. https://doi.org/10.1890/02-3090
+-->
+
+## Repeat visits within seasons; repeat seasons through time
+
+\begin{center}
+\begin{tikzpicture}[x=1cm,y=1cm]
+\foreach \x/\year in {0/Year 1,3.7/Year 2,7.4/Year 3} {
+  \node[font=\bfseries] at (\x+1,1.1) {\year};
+  \draw[rounded corners,draw=bl,fill=bl!5] (\x,0) rectangle (\x+2,0.75);
+  \node[font=\small] at (\x+1,0.38) {Visit 1, 2, 3};
+}
+\draw[->,thick] (2.15,0.38) -- (3.55,0.38);
+\draw[->,thick] (5.85,0.38) -- (7.25,0.38);
+\end{tikzpicture}
+\end{center}
+
+- Revisit the **same sites** in a comparable short period each year.
+- **Within each season:** repeat visits estimate detection probability;
+  occupancy or the pattern of site use is assumed stable.
+- **Between seasons:** sites can become occupied or cease to be occupied.
+- Record habitat changes, survey effort and conditions each year.
+
+\vspace{0.2cm}
+
+A missed visit is missing data, not a nondetection.
+
+<!-- Three visits per season are an illustration, not a universal minimum or
+power recommendation. Replication should be selected using pilot information.
+For small otter sites the stable-use interpretation and movement assumptions
+still apply within each season. Repeating comparable calendar windows helps
+separate interannual changes from regular seasonal movement.
+-->
+
+## What changes between seasons?
+
+\small
+The model estimates **initial occupancy**, **colonisation**, **local extinction**
+and **detection probability**.
+
+| Site in one season | Site in the next season | Process |
+|:--|:--|:--|
+| Unoccupied | Occupied | Colonisation ($\gamma$) |
+| Occupied | Unoccupied | Local extinction ($\varepsilon$) |
+| Occupied | Occupied | Persistence ($1-\varepsilon$) |
+| Unoccupied | Unoccupied | Remains unoccupied ($1-\gamma$) |
+
+\vspace{0.2cm}
+
+For our otter sites, these describe **gains and losses of site use**.
+Local extinction here does not necessarily mean an otter died.
+
+The true states are hidden: the model estimates transitions from repeated
+surveys, allowing for missed detections.
+
+<!-- Gamma is conditional on a site being unoccupied in the previous season;
+epsilon is conditional on previous occupancy. For site-use models, transitions
+need not represent biological recruitment, death, or permanent range shifts.
+Standard dynamic models link latent states between seasons; they do not simply
+count changes in the observed detection/nondetection records.
+-->
+
+## From repeated surveys to changes in range
+
+- Estimate occupancy probabilities for each season, with uncertainty.
+- Map where site use is increasing, persisting or declining.
+- Relate gains and losses to habitat conditions or changes in habitat.
+- Allow detection to vary with survey conditions and between seasons.
+
+\vspace{0.2cm}
+
+For comparable range maps, use the **same sites, spatial scale and threshold**.
+Inspect changes in probabilities and uncertainty as well as the mapped boundary.
+
+\vspace{0.2cm}
+
+\alert{A site with no detections this year is not automatically a site lost from the range.}
+
+<!-- Example to discuss: history 101 in year 1 followed by 000 in year 2
+could reflect loss of site use or continued use with missed detections.
+Predictions at unsurveyed sites require habitat covariates for the appropriate
+seasons and supported models for initial occupancy and transitions. Observational
+associations with habitat restoration do not on their own establish causation.
+A fixed threshold improves comparability but is not evidence of a true boundary.
+-->

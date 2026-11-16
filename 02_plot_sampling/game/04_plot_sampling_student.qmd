@@ -1,0 +1,107 @@
+---
+format:
+  pdf:
+    pdf-engine: xelatex
+    documentclass: article
+    papersize: a4
+    fontsize: 10pt
+    mainfont: Arial
+    geometry:
+      - top=14mm
+      - bottom=16mm
+      - left=17mm
+      - right=17mm
+    colorlinks: false
+    keep-tex: false
+    include-in-header:
+      text: |
+        \usepackage{array,longtable,booktabs,amssymb,fancyhdr}
+        \pagestyle{fancy}
+        \fancyhf{}
+        \renewcommand{\headrulewidth}{0pt}
+        \fancyfoot[L]{\scriptsize Wildlife survey games -- student}
+        \fancyfoot[R]{\scriptsize\thepage}
+        \setlength{\parskip}{4pt}
+        \setlength{\LTpre}{3pt}
+        \setlength{\LTpost}{3pt}
+execute:
+  echo: false
+  warning: false
+  message: false
+  error: false
+---
+
+```{r}
+source("../scripts/print_helpers.R")
+g <- simulate_game("plot_sampling")
+```
+
+# Desert monitor survey
+
+**Shared student instructions — Tasks A and B | Teams of 3–5 | 25–35 minutes**
+
+## Your survey
+
+Estimate the total number of desert monitors on the landscape and a **95% confidence interval**. The map contains **100 equal-area plots**, each representing one hectare. The green habitat (columns F–J) and open habitat (columns A–E) each cover **50 hectares**. All monitors in a surveyed plot are detected.
+
+## Collect your data
+
+1. Choose a plot navigator, counter and recorder. Other team members check counts.
+2. Receive a task (A or B) and a sample-set letter (A–D). Use its **20 distinct plot IDs**, selected before counting. Save this list. Do not swap plots or add attractive-looking cells.
+3. Locate each selected cell using its column and row; for example, **F07** means column F, row 07. Count every lizard symbol in that cell once. Symbols are fully inside their cells.
+4. Complete one recording-sheet row per selected plot. Use the exact headings **plot_id, habitat, count**. Habitat is **green** for F–J and **open** for A–E. Record **0** if a counted plot is empty; a blank means missing data. Have another person check the count.
+5. Enter the same three columns in a spreadsheet and save as CSV. Use `data/student/recording_template.csv` as a starting point. Remove unused blank rows and check for duplicate IDs or missing counts. Do not enter habitat totals as extra rows.
+
+## Estimate abundance and uncertainty
+
+Open the R script matching your task: **code/task_A_srs.R** or **code/task_B_stratified.R**. Run it section by section, selecting your CSV when prompted. The scripts use the same calculations as the main plot-sampling practical.
+
+Record your abundance estimate, standard error and lower and upper 95% confidence limits on the sheet. Also calculate **100 × your overall mean count** by hand as a check. Keep full precision in R; round the reported results to one decimal place.
+
+## Compare and discuss
+
+Submit your results before the instructor reveals the population total. Compare the two tasks' estimates and interval widths. What differs in plot selection? Why might habitat affect precision? Must one task give a closer estimate or narrower interval in every sample? A 95% interval method covers the true total in about 95% of repeated samples under its assumptions; an individual interval can miss it.
+
+```{r, results='asis'}
+page("SURVEY TASK CARDS")
+for(task in c("A","B")) {
+ cat("## Task ",task,if(task=="A")" — simple random sampling" else " — stratified random sampling", "\n\n",sep="")
+ cat(if(task=="A")
+   "Each list is a random sample of 20 of the 100 plots, without replacement.\n\n" else
+   "Each list contains 10 randomly selected green plots and 10 randomly selected open plots, without replacement within each habitat. Equal effort: 20 plots in total.\n\n")
+ for(team in LETTERS[1:4]) {
+  ids <- g$selections$id[g$selections$team==team & g$selections$task==task]
+  cat("**Set ",team,":** ",paste(ids,collapse=", "),"\n\n",sep="")
+ }
+}
+```
+
+Use only your assigned task and set. Different teams may share plots. Both tasks use the same landscape, student instructions and recording sheet.
+
+```{r, results='asis'}
+page("RECORDING SHEET")
+```
+
+Team: __________________  Task (A/B): ____  Sample set (A–D): ____
+
+Observers: __________________________  Date: __________________
+
+**CSV headings must match exactly.** Habitat: `green` (F–J) or `open` (A–E). Count all 20 selected plots, including zeros.
+
+```{r, results='asis'}
+blank_table(c("plot_id","habitat","count"),20)
+```
+
+Plots sampled: ____  Green plots: ____  Open plots: ____
+
+Sum of counts: ____  Mean count per plot: ____
+
+Hand check: 100 × overall mean = ____ estimated monitors.
+
+R abundance estimate: ____  Standard error: ____
+
+Approximate 95% CI: lower ____  upper ____  Width: ____
+
+Submit your estimate and interval before the reveal.
+
+After the reveal: true total ____  Does your interval include it? ____

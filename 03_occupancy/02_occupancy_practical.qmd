@@ -1,0 +1,1087 @@
+---
+title: Occupancy Modelling -- Practical
+subtitle: Biodiversity Monitoring Course, Module 3
+fontsize: 10pt
+execute:
+  echo: true
+format:
+  beamer:
+    theme: metropolis
+    incremental: false
+    slide-level: 2
+    pdf-engine: xelatex
+    syntax-highlighting: tango
+    include-in-header:
+      text: |
+        \usepackage{arydshln}
+        \usepackage{animate}
+        \definecolor{bl}{rgb}{0.16,0.32,0.75}
+        \definecolor{rd}{rgb}{0.82,0.1,0.26}
+        \definecolor{grn}{rgb}{0.55,0.71,0.0}
+        \providecommand{\hib}[1]{\textcolor{bl}{#1}}
+        \providecommand{\hig}[1]{\textcolor{grn}{#1}}
+        \providecommand{\hir}[1]{\textcolor{rd}{#1}}
+        \setbeamertemplate{title page}{%
+          \centering
+          \includegraphics[width=0.27\textwidth,height=1.1cm,keepaspectratio]{../logos/01-standard-black-text.png}\hfill
+          \includegraphics[width=0.40\textwidth,height=1.1cm,keepaspectratio]{../logos/creem-long.png}\hfill
+          \includegraphics[width=0.19\textwidth,height=1.1cm,keepaspectratio]{../logos/SLT-Logo-2016-300dpi-Regular.jpg}\par
+          \vspace{0.35cm}
+          {\LARGE\inserttitle\par}
+          \vspace{0.35cm}
+          {\normalsize\insertsubtitle\par}
+          \vspace{0.25cm}
+          {\small UNDP-GEF Project\par}
+          \vspace{0.15cm}
+          {\small ``Integrated Community-based Management of High Value Mountain Ecosystems in Southern Kyrgyzstan for Multiple Benefits''\par}
+          \vfill
+          {\fontsize{6}{7}\selectfont
+          \textcopyright{} 2026 University of St Andrews (Centre for Research into Ecological and Environmental Modelling, CREEM), Snow Leopard Trust, developed within the framework of the UNDP-GEF Pamir-Alai project. Licensed under CC BY 4.0. You may share and adapt these materials if you keep this credit and indicate any changes.\par}
+        }
+classoption: t
+urlcolor: teal
+---
+
+
+```{r setup, echo=FALSE,warning=FALSE,message=FALSE}
+library(ggplot2)
+library(ggstance)
+library(ggthemes)
+library(cowplot)
+library(unmarked)
+library(knitr)
+library(faux)
+
+#global par
+knitr::opts_knit$set(global.par = TRUE) 
+
+#fig folder
+knitr::opts_chunk$set(fig.path="figures/02_occupancy_practical-")
+
+#code size
+def.chunk.hook  <- knitr::knit_hooks$get("chunk")
+knitr::knit_hooks$set(
+  chunk = function(x, options){
+            x <- def.chunk.hook(x, options)
+            ifelse(options$size != "normalsize", 
+                   paste0("\n \\", options$size,"\n\n", x, "\n\n \\normalsize"), 
+                   x)
+})
+hook_output <- knit_hooks$get("output")
+knit_hooks$set(output = function(x, options) {
+   lines <- options$output.lines
+   if (is.null(lines)) {
+     return(hook_output(x, options))  # pass to default hook
+   }
+   x <- unlist(strsplit(x, "\n"))
+   more <- "..."
+   if (length(lines)==1) {        # first n lines
+     if (length(x) > lines) {
+       # truncate the output, but add ....
+       x <- c(head(x, lines), more)
+     }
+   } else {
+     x <- c(more, x[lines], more)
+   }
+   # paste these lines together
+   x <- paste(c(x, ""), collapse = "\n")
+   hook_output(x, options)
+ })
+# tiny < scriptsize < footnotesize < small < 
+# normalsize < large	< Large < LARGE < huge < Huge
+```
+
+## Hierarchical occupancy model
+
+Reminder of occupancy model...
+
+Hierarchical model structure:
+
+- one model for estimating where animals really are
+- another model for estimating which animals are detected
+
+We estimate the parameters of both models at the same time, using maximum likelihood
+
+```{r, include=FALSE}
+# SIMULATE OCCUPANCY DATA #
+set.seed(1) # So we all get same data set
+M <- 100    # Number of sites
+J <- 3      # Number of surveys
+beta0 <- -3  # Logit-scale intercept
+beta1 <- 0.06  # Slope per percentage point of riparian cover
+
+cover <- sort(round(runif(M, 0, 100), 1))
+psi <- plogis(beta0 + beta1 * cover)
+z <- rbinom(M, 1, psi)
+
+psi_df <- data.frame(cover = cover,psi=psi,Occupancy=factor(z,levels=c(1,0)))
+gpsi <- ggplot(data=psi_df) +
+          geom_point(aes(x=cover,y=z,fill=Occupancy,color=Occupancy),
+                     position = position_jitter(height=0.05),
+                     size=3, shape = 16, alpha=0.4) +
+          geom_line(aes(x=cover,y=psi),linewidth=2) + ylab("Pr(occupancy)") + xlab("Riparian cover (%)") +
+          theme_bw() + scale_color_fivethirtyeight()
+gpsiNL <- ggplot(data=psi_df) +
+            geom_point(aes(x=cover,y=z,fill=Occupancy,color=Occupancy),
+                       position = position_jitter(height=0.05) , size=3,
+                       shape = 16, alpha=0.4) + ylab("Pr(occupancy)") + xlab("Riparian cover (%)") +
+            theme_bw() + scale_color_fivethirtyeight() + theme(legend.position = "none")
+
+# SIMULATE DETECTION DATA #
+alpha0 <- 1.5                                # Logit-scale intercept
+alpha1 <- -0.86                             # Slope per high-flow day
+highFlow <- array(round(runif(M * J, 0, 7)), # MxJ high-flow days in preceding week
+              dim = c(M, J))                # dimensions: MxJ
+p <- plogis(alpha0 + alpha1 * highFlow)         # expected pr(detection)
+y <- matrix(NA, nrow = M, ncol = J)         # empty y matrix
+for(j in 1:J){
+  y[,j] <- rbinom(M, 1, z*p[,j])            # realized y (p*z)
+}
+
+# Additional seasons: keep season 1 exactly as simulated above.
+# Restore the RNG afterwards so existing jittered figures also stay unchanged.
+rng.season1 <- .Random.seed
+set.seed(42)
+nseasons <- 3
+gamma <- 0.20   # gain of site use between seasons
+epsilon <- 0.10 # loss of site use between seasons
+z.ms <- matrix(NA, nrow=M, ncol=nseasons)
+z.ms[, 1] <- z
+y.ms <- matrix(NA, nrow=M, ncol=J * nseasons)
+flow.ms <- matrix(NA, nrow=M, ncol=J * nseasons)
+y.ms[, 1:J] <- y
+flow.ms[, 1:J] <- highFlow
+for (season in 2:nseasons) {
+  previous <- z.ms[, season - 1]
+  prob.use <- previous * (1 - epsilon) + (1 - previous) * gamma
+  z.ms[, season] <- rbinom(M, 1, prob.use)
+  for (visit in 1:J) {
+    column <- (season - 1) * J + visit
+    flow.ms[, column] <- round(runif(M, 0, 7))
+    p.visit <- plogis(alpha0 + alpha1 * flow.ms[, column])
+    y.ms[, column] <- rbinom(M, 1, z.ms[, season] * p.visit)
+  }
+}
+season.visit <- paste0("S", rep(1:nseasons, each=J), "V", rep(1:J, nseasons))
+colnames(y.ms) <- colnames(flow.ms) <- season.visit
+.Random.seed <- rng.season1
+
+p_df <- data.frame(highFlow = c(highFlow),p=c(p),y=c(y),Occasion=c(factor(col(y))),
+                   Occupancy = factor(rep(z,3),levels=c(1,0)))
+psi_df$Naive <- apply(y,1,max)
+gp <- ggplot(data = p_df) +
+        geom_point(aes(x=highFlow,y=y, fill=Occupancy,color=Occupancy), position = position_jitter(height=0.05),
+                   size=3, shape = 16,  alpha=0.4) +
+        geom_line(aes(x=highFlow,y=p),linewidth=1) +
+        facet_wrap(.~Occasion)+scale_color_fivethirtyeight() + scale_fill_fivethirtyeight() +
+        theme_bw() + ylab("Pr(detection)") + xlab("High-flow days in preceding week")
+gpNL <- ggplot(data = p_df) +
+          geom_point(aes(x=highFlow,y=y, fill=Occupancy,color=Occupancy), position = position_jitter(height=0.05),
+                     size=3, shape = 16, alpha=0.4) +
+          facet_wrap(.~Occasion)+scale_color_fivethirtyeight() + scale_fill_fivethirtyeight() +
+          theme_bw() + ylab("Pr(detection)") + xlab("High-flow days in preceding week")
+gpsiObs <- ggplot(data=psi_df) +
+              geom_point(aes(x=cover,y=Naive,fill=Occupancy,color=Occupancy),
+                         position = position_jitter(height=0.05) , size=3,
+                         shape = 16, alpha=0.4) + ylab("Pr(occupancy)") + xlab("Riparian cover (%)") +
+              theme_bw() + scale_color_fivethirtyeight() + theme(legend.position = "none")
+```
+
+## Simulate otter transect survey data 
+
+Hypothetical Central Asian otter surveys (all data simulated):
+
+- M=100 fixed 600 m shoreline transects
+- J=3 repeat visits within one short season
+- occupancy positively related to riparian cover
+- detection negatively related to recent high flows 
+- true number of occupied sites: `r sum(z)`
+- transects with detected signs: `r sum(apply(y,1,max))`
+
+\vspace{0.75cm}
+
+```{r, echo=FALSE, fig.align='center',fig.height=3, fig.width=9,out.height="1.2in", warning=FALSE}
+plot_grid(gpsiNL,gpNL,rel_widths = c(1,2.5))
+```
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=-3.33cm, yshift=-2.5cm, draw=black, shape=rectangle, rounded corners=1.5, fill=black!15,opacity=.4, text opacity=1] at (current page){\begin{minipage}[t][3.5cm][t]{0.23\textwidth}
+      {\textbf{State} (latent)}
+      \end{minipage}};
+\node[xshift=1.3cm, yshift=-2.5cm, draw=gray, shape=rectangle, rounded corners=1.5] at (current page){\begin{minipage}[t][3.5cm][t]{0.58\textwidth}
+      {\textbf{Observations}}
+      \end{minipage}};
+\end{tikzpicture}
+
+## Simulated otter survey sites
+
+```{r, include=FALSE}
+# Schematic network: each segment is one fixed-length river site.
+network <- do.call(rbind, lapply(1:5, function(branch) {
+  t <- seq(0, 1, length.out = 41)
+  if (branch == 1) {
+    x <- 10 * t
+    yy <- 2 + 0.25 * sin(x)
+  } else {
+    junction <- c(2, 4, 6, 8)[branch - 1]
+    side <- c(1, -1, 1, -1)[branch - 1]
+    x <- junction + 1.5 * (1 - t)
+    yy <- 2 + 0.25 * sin(junction) + side * 3 * (1 - t) +
+      0.2 * sin(pi * t)
+  }
+  data.frame(x = x[-41], yy = yy[-41],
+             xend = x[-1], yend = yy[-1])
+}))
+# Hypothetical habitat coverage, confined to the sampled range.
+network$cover <- min(cover) + diff(range(cover)) *
+  (rank(network$x + sin(network$yy), ties.method = "first") - 1) /
+  (nrow(network) - 1)
+# Link the existing simulated survey rows to 100 distinct network sites.
+# Spread their locations across the habitat gradient; no new survey data.
+survey.rows <- order(network$cover)[round(seq(1, nrow(network), length.out=M))]
+network$surveyed <- FALSE
+network$surveyed[survey.rows] <- TRUE
+network$cover[survey.rows] <- cover
+```
+
+```{r, echo=FALSE, fig.align='center', fig.height=3.2, fig.width=8, out.height="2in", warning=FALSE}
+ggplot(network) +
+  geom_segment(aes(x=x, y=yy, xend=xend, yend=yend,
+                   colour=surveyed), linewidth=2) +
+  scale_colour_manual(values=c("FALSE"="grey80", "TRUE"="#D11A42"),
+                      breaks=c(FALSE, TRUE),
+                      labels=c("Not surveyed", "Surveyed"), name=NULL) +
+  coord_equal() + theme_void() + theme(legend.position="right")
+```
+
+- 100 of 200 hypothetical river segments were surveyed on three visits.
+- Each surveyed segment represents a fixed 600 m shoreline transect.
+
+## Otter transect surveys: the inference problem 
+
+Summary of the inference problem (because we don't know truth):
+
+- M=100 fixed 600 m shoreline transects
+- J=3 repeat visits within one short season
+- \alert{is occupancy related to riparian cover}?
+- \alert{is detection related to recent high flows}?  
+- \alert{what is the overall occupancy rate}?
+
+\vspace{0.8cm}
+
+```{r, echo=FALSE, fig.align='center',fig.height=3, fig.width=9,out.height="1.2in", warning=FALSE}
+plot_grid(gpsiObs,gpNL,rel_widths = c(1,2.5))
+```
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=-0.05cm, yshift=-2.5cm, draw=gray, shape=rectangle, rounded corners=1.5] at (current page){\begin{minipage}[t][3.5cm][t]{0.835\textwidth}
+      {\textbf{Observations}}
+      \end{minipage}};
+\end{tikzpicture}
+
+## Typical `unmarked` workflow
+
+1. organise 'observations', 'site covariates' and 'observation covariates'
+
+2. create an `unmarkedFrameOccu` object
+
+3. model fitting using `occu()`
+
+4. analyse the results
+
+\vfill
+
+```{r, size="footnotesize"}
+# load the package 
+library(unmarked)
+```
+
+\vfill
+
+## Typical `unmarked` workflow - \alert{data formatting}
+
+Organise 'observations', 'site covariates' and 'observation covariates'
+
+- typically read into `R` as a single object
+- here we assemble a simulated otter survey data frame
+
+```{r, size="scriptsize"}
+# combined
+occdata <- data.frame(y=y,cover=cover,highFlow=highFlow)
+head(occdata)
+```
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=0cm, yshift=-3.2cm] at (current page){
+\includegraphics[height=0.7in]{figures/data}};
+\end{tikzpicture}
+
+## Typical `unmarked` workflow - \alert{create the unmarkedFrame}
+
+Create an `unmarkedFrameOccu` object:
+
+\vspace{0.2cm}
+
+```{r, eval=FALSE, size="footnotesize"}
+?unmarkedFrameOccu
+umf <- unmarkedFrameOccu(y =        , # observations
+                         siteCovs = , # site covariates
+                         obsCovs =  ) # observation covariates
+```
+
+\vspace{0.5cm}
+
+<!-- \centering -->
+
+<!-- \scalebox{0.7}{\dtocc} -->
+
+## Typical `unmarked` workflow - \alert{create the unmarkedFrame}
+
+Create an `unmarkedFrameOccu` object:
+
+\vspace{0.2cm}
+
+```{r, eval=FALSE, size="footnotesize"}
+?unmarkedFrameOccu
+umf <- unmarkedFrameOccu(y =        , # observations
+                         siteCovs = , # site covariates
+                         obsCovs =  ) # observation covariates
+```
+
+- `y` is a binary **M x J** matrix or data frame
+
+\vfill
+
+```{r,echo=FALSE, size="scriptsize", output.lines=5}
+head(occdata,7)
+```
+
+## Typical `unmarked` workflow - \alert{create the unmarkedFrame}
+
+Create an `unmarkedFrameOccu` object:
+
+\vspace{0.2cm}
+
+```{r, eval=FALSE, size="footnotesize"}
+?unmarkedFrameOccu
+umf <- unmarkedFrameOccu(y =        , # observations
+                         siteCovs = , # site covariates
+                         obsCovs =  ) # observation covariates
+```
+
+- `siteCovs` is a data frame
+    - with **M** rows (= number sites)
+    - **K**$^{site}$ columns (= number of site-level covariates)
+
+\vfill
+
+```{r,echo=FALSE, size="scriptsize", output.lines=5}
+head(occdata,7)
+```
+
+## Typical `unmarked` workflow - \alert{create the unmarkedFrame}
+
+Create an `unmarkedFrameOccu` object:
+
+\vspace{0.2cm}
+
+```{r, eval=FALSE, size="footnotesize"}
+?unmarkedFrameOccu
+umf <- unmarkedFrameOccu(y =        , # observations
+                         siteCovs = , # site covariates
+                         obsCovs =  ) # observation covariates
+```
+
+- `obsCovs` is a named list of data frames
+    - each data frame has **M** rows (=number of sites) 
+    - each data frame has **J** columns (=number of visits)
+    - list contains **K**$^{obs}$ data frames (=number of observation-level covariates)
+
+\vfill
+
+```{r,echo=FALSE, size="scriptsize", output.lines=5}
+head(occdata,7)
+```
+
+## Typical `unmarked` workflow - \alert{create the unmarkedFrame}
+
+Create an `unmarkedFrameOccu` object:
+
+\vspace{0.2cm}
+
+```{r, size="footnotesize"}
+# for our simulated data
+umf <- unmarkedFrameOccu(y = occdata[,1:3],
+                         siteCovs = data.frame(cover = occdata$cover),
+                         obsCovs = list(highFlow = occdata[,5:7]))
+```
+
+- `y` is a binary **M x J** matrix or data frame
+- `siteCovs` is a **M x K**$^{site}$ data frame
+- `obsCovs` is a named **K**$^{obs}$ length list of **M x J** data frames 
+
+\vfill
+
+```{r,echo=FALSE, size="scriptsize", output.lines=5}
+head(occdata,7)
+```
+
+
+## Typical `unmarked` workflow - \alert{create the unmarkedFrame}
+
+Inspect the `unmarkedFrameOccu` object:
+
+\vspace{0.2cm}
+
+```{r, size="tiny"}
+summary(umf)
+```
+
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=-0.05cm, yshift=0.8cm, draw=gray!30, shape=rectangle, rounded corners=1.5, thick] at (current page){\begin{minipage}[c][1.8cm][c]{1\textwidth}
+      {\hfill \textbf{Summary of Observations}}
+      \end{minipage}};
+\node[xshift=-0.05cm, yshift=-1.4cm, draw=gray!30, shape=rectangle, rounded corners=1.5, thick] at (current page){\begin{minipage}[c][1.8cm][c]{1\textwidth}
+      {\hfill \textbf{Summary of site covs}}
+      \end{minipage}};
+\node[xshift=-0.05cm, yshift=-3.6cm, draw=gray!30, shape=rectangle, rounded corners=1.5, thick] at (current page){\begin{minipage}[c][1.8cm][c]{1\textwidth}
+      {\hfill \textbf{Summary of observation covs}}
+      \end{minipage}};
+\end{tikzpicture}
+
+## Typical `unmarked` workflow - \alert{model fitting}
+
+Fit model(s) using the `occu()` function
+
+\vspace{0.2cm}
+
+```{r, eval=FALSE, size="footnotesize"}
+?occu
+mod <- occu(formula =  , # ~detection ~occupancy
+            data =     ) # an unmarkedFrameOccu
+```
+
+\vspace{0.5cm}
+
+<!-- \centering -->
+
+<!-- \scalebox{0.7}{\dtocc} -->
+
+## Typical `unmarked` workflow - \alert{model fitting}
+
+Fit model(s) using the `occu()` function
+
+\vspace{0.2cm}
+
+```{r, eval=FALSE, size="footnotesize"}
+?occu
+mod <- occu(formula =  , # ~detection ~occupancy
+            data =     ) # an unmarkedFrameOccu
+```
+
+- `formula` is a \alert{double right-hand side formula}
+    - first defines the detection model
+    - second defines the occupancy model
+    - each uses typical `R` model syntax
+
+- `data` is an unmarkedFrameOccu object
+    - any covariates in the `unmarkedFrameOccu` can be used in the model
+    - occupancy can only be modelled using siteCovs
+
+
+## Typical `unmarked` workflow - \alert{model fitting}
+
+Fit model(s) using the `occu()` function 
+
+- we don't know truth in practice, we have hypotheses
+    - about variation in $\psi$
+    - about variation in $p$
+- potentially a lot of models
+- typically want to compare models (eg, using AIC)
+
+## Typical `unmarked` workflow - \alert{model fitting}
+
+Fit model(s) using the `occu()` function 
+
+- we don't know truth in practice, we have hypotheses
+    - about variation in $\psi$
+    - about variation in $p$
+- potentially a lot of models
+- typically want to compare models (eg, using AIC)
+
+\vfill
+
+\begin{table}
+\begin{tabular}{llll}
+\hline
+Model & Covariate         & Formula                                                      & \texttt{unmarked} \\ 
+\hline
+$\psi$    & Null              & $\mbox{logit}(\psi_{i}) = \beta_0$                           & \verb|~1| \\
+$\psi$    & Cover (\%) & $\mbox{logit}(\psi_{i}) = \beta_0 + \beta_1\mbox{cover}_{i}$ & \verb|~cover| \\
+\hline
+$p$       & Null              & $\mbox{logit}(p_{ij}) = \alpha_0$                            & \verb|~1| \\
+$p$       & High-flow days              & $\mbox{logit}(p_{ij}) = \alpha_0 + \alpha_1\mbox{highFlow}_{ij}$ & \verb|~highFlow| \\
+\hline
+\end{tabular}
+\end{table}
+
+\vfill
+
+## Typical `unmarked` workflow - \alert{model fitting}
+
+Fit model(s) using the `occu()` function 
+
+- we don't know truth in practice, we have hypotheses
+    - about variation in $\psi$
+    - about variation in $p$
+- potentially a lot of models
+- typically want to compare models (eg, using AIC)
+
+\vfill
+
+```{r, size="footnotesize"}
+# for our simulated data
+m1 <- occu(formula = ~1    ~1,     data = umf)
+m2 <- occu(formula = ~highFlow ~1,     data = umf)
+m3 <- occu(formula = ~1    ~cover, data = umf)
+m4 <- occu(formula = ~highFlow ~cover, data = umf) #data generating model
+```
+
+\vfill
+
+## Typical `unmarked` workflow - \alert{analyse the results}
+
+Post-fitting analysis steps include:
+
+- which model is preferred? (*model selection*)
+- what does the preferred model tell us? (*inference, prediction*)
+
+\vfill
+
+```{r, size="footnotesize"}
+# for our simulated data
+m1 <- occu(formula = ~1    ~1,     data = umf)
+m2 <- occu(formula = ~highFlow ~1,     data = umf)
+m3 <- occu(formula = ~1    ~cover, data = umf)
+m4 <- occu(formula = ~highFlow ~cover, data = umf)
+```
+
+\begin{tikzpicture}[remember picture, overlay]
+\node[xshift=3.5cm, yshift=-0.5cm] at (current page){
+\includegraphics[height=0.7in]{figures/qm}};
+\end{tikzpicture}
+
+\vfill
+
+## Typical `unmarked` workflow - \alert{analyse the results}
+
+\alert{Model selection} in `unmarked` using helper functions
+
+- `fitList()` creates a list of fitted occupancy models
+
+\vspace{0.2cm}
+
+```{r, size="footnotesize",warning=FALSE}
+# create a basic fitList (produces warning)
+fl <- fitList(m1,m2,m3,m4)
+```
+
+## Typical `unmarked` workflow - \alert{analyse the results}
+
+\alert{Model selection} in `unmarked` using helper functions
+
+- `fitList()` creates a list of fitted occupancy models
+
+\vspace{0.2cm}
+
+```{r, size="footnotesize",warning=FALSE}
+# create a basic fitList (produces warning)
+fl <- fitList(m1,m2,m3,m4)
+
+# OR create a NAMED fitList (doesn't produce warning)
+fl <- fitList(
+  "p(.)    psi(.)"   = m1,
+  "p(flow) psi(.)"   = m2,
+  "p(.)    psi(cover)" = m3,
+  "p(flow) psi(cover)" = m4
+)
+```
+
+
+## Typical `unmarked` workflow - \alert{analyse the results}
+
+\alert{Model selection} in `unmarked` using helper functions
+
+- `modSel()` creates a ranked AIC model table from a `fitList` object
+    - support for an effect of recent high flows on detection
+    - support for an effect of riparian cover on occupancy
+    - proceed with AIC-top model
+
+\vfill
+
+```{r, size="footnotesize"}
+# create a model selection table
+ms <- modSel(fl)
+ms
+topmod <- m4 # lowest AIC in this simulated dataset
+```
+
+\vfill
+
+## Typical `unmarked` workflow - \alert{analyse the results}
+
+\alert{Draw inferences} about occupancy and detection (and modelled relationships)
+
+- model summary produces familiar model output
+- summarises parameter estimates, including SEs, *p*-values etc...
+
+```{r, eval=FALSE,size="scriptsize"}
+# create a model selection table
+summary(topmod)
+```
+
+\vfill
+
+## Typical `unmarked` workflow - \alert{analyse the results}
+
+\alert{Draw inferences} about occupancy and detection (and modelled relationships)
+
+```{r, size="scriptsize"}
+# create a model selection table
+summary(topmod)
+```
+
+## Typical `unmarked` workflow - \alert{analyse the results}
+
+\alert{Draw inferences} about occupancy and detection (and modelled relationships)
+
+
+:::::: {.columns}
+
+::: {.column width="60%"}
+```{r, size="scriptsize"}
+# create a model selection table
+summary(topmod)
+```
+:::
+
+::: {.column width="38%"}
+```{r, size="scriptsize"}
+# SIMULATED TRUE VALUES
+# Occupancy
+beta0 <- -3
+beta1 <- 0.06
+
+# Detection
+alpha0 <- 1.5
+alpha1 <- -0.86
+```
+:::
+
+::::::
+
+## Typical `unmarked` workflow - \alert{analyse the results}
+
+\alert{Draw inferences} about occupancy and detection (and modelled relationships)
+
+\vspace{0.5cm}
+
+```{r, echo=FALSE, size="scriptsize"}
+topmod@estimates
+```
+
+\vspace{0.5cm}
+
+- estimated positive effect of `cover` on occupancy ($\beta_{1} = `r round(coef(topmod)[2],2)` \pm `r round(sqrt(diag(vcov(topmod)))[2],2)`$)
+- significant negative effect of `highFlow` on detection ($\alpha_{1} = `r round(coef(topmod)[4],2)` \pm `r round(sqrt(diag(vcov(topmod)))[4],2)`$)
+
+## Now we can make predictions - \alert{in \texttt{unmarked}}
+
+\alert{Draw inferences} about occupancy and detection (and modelled relationships)
+
+- we have estimates (MLEs) of the model parameters ($\beta_{0},\beta_{1},\alpha_{0},\alpha_{1}$)
+- possible to calculate $p$ or $\psi$ for any value of riparian cover or recent high-flow days
+$$\mbox{logit}(\psi_i) = `r round(coef(topmod)[1], 3)` + `r round(coef(topmod)[2], 3)` \times \mbox{cover}_{i}$$
+$$\mbox{logit}(p_{ij}) = `r round(coef(topmod)[3], 3)` + (`r round(coef(topmod)[4], 3)`) \times \mbox{highFlow}_{ij}$$
+- use built-in `predict()` function
+    - predict detection (`type="det"`)
+    - predict occupancy (`type="state"`)
+    - provide a data frame of covariate values to make predictions for
+    - \alert{must} include covs with identical names to the model 
+    
+## Now we can make predictions - \alert{in \texttt{unmarked}}
+
+- use built-in `predict()` function
+    - predict detection (`type="det"`)
+    - predict occupancy (`type="state"`)
+    - provide a data frame of covariate values to make predictions for
+    - \alert{must} include covs with identical names to the model
+- predict the occupancy-cover relationship (`type="state"`):
+
+\vspace{0.2cm}
+
+```{r, size="footnotesize"}
+#Predict psi over the observed range of cover
+pred.psi.df <- data.frame(cover = seq(from = min(occdata$cover),
+                                   to = max(occdata$cover),
+                                   length = 30))
+```
+
+## Now we can make predictions - \alert{in \texttt{unmarked}}
+
+- use built-in `predict()` function
+    - predict detection (`type="det"`)
+    - predict occupancy (`type="state"`)
+    - provide a data frame of covariate values to make predictions for
+    - \alert{must} include covs with identical names to the model 
+- predict the occupancy-cover relationship (`type="state"`):
+
+\vspace{0.2cm}
+
+```{r, size="footnotesize"}
+#Predict psi over the observed range of cover
+pred.psi.df <- data.frame(cover = seq(from = min(occdata$cover),
+                                   to = max(occdata$cover),
+                                   length = 30))
+
+pred.psi <- predict(object = topmod,    #model we want to predict from
+                    type = "state",     #which sub model
+                    newdata = pred.psi.df, #data we want predictions for
+                    append = TRUE)      #add 'newdata' to predictions
+```
+
+## Now we can make predictions - \alert{in \texttt{unmarked}}
+
+- use built-in `predict()` function
+    - predict detection (`type="det"`)
+    - predict occupancy (`type="state"`)
+    - provide a data frame of covariate values to make predictions for
+    - \alert{must} include covs with identical names to the model
+- returns real-scale occupancy estimates with SE and CIs
+
+\vspace{0.2cm}
+
+```{r, size="footnotesize"}
+head(pred.psi)
+```
+
+## Now we can make predictions - \alert{in \texttt{unmarked}}
+
+- use built-in `predict()` function
+    - predict detection (`type="det"`)
+    - predict occupancy (`type="state"`)
+    - provide a data frame of covariate values to make predictions for
+    - \alert{must} include covs with identical names to the model 
+- predict the detection-highFlow relationship (`type="det"`):
+
+\vspace{0.2cm}
+
+```{r, size="footnotesize"}
+#Predict p over the observed range of highFlow
+pred.p.df <- data.frame(highFlow = seq(from = min(occdata[,5:7]),
+                                to = max(occdata[,5:7]),
+                                length = 30))
+
+pred.p <- predict(object = topmod,    #model we want to predict from
+                  type = "det",       #which sub model
+                  newdata = pred.p.df,   #the data we want predictions for
+                  append = TRUE)      #add the 'newdata' to the predictions
+```
+
+## Now we can make predictions - \alert{in \texttt{unmarked}}
+
+- use built-in `predict()` function
+    - predict detection (`type="det"`)
+    - predict occupancy (`type="state"`)
+    - provide a data frame of covariate values to make predictions for
+    - \alert{must} include covs with identical names to the model
+- returns real-scale detection estimates with SE and CIs
+
+\vspace{0.2cm}
+
+```{r, size="footnotesize"}
+head(pred.p)
+```
+
+## Now we can make predictions
+
+\vspace{1cm}
+
+\vfill
+
+```{r, echo=FALSE, fig.align='center',fig.height=3, fig.width=6,out.height="1.8in", warning=FALSE}
+glmdf <- data.frame(y = apply(y,1,max), cover = cover)
+glmmod <- glm(y ~ cover, data = glmdf, family="binomial")
+glmpred <- cbind(pred.psi,glmpred = predict(glmmod,type="response",newdata=pred.psi))
+gpsipred1 <- ggplot() +
+  geom_ribbon(data = pred.psi, aes(x=cover, ymin=lower, ymax=upper),
+              fill="#5B84B1FF", alpha=0.25) +
+  geom_line(data = pred.psi, aes(x=cover, y=Predicted), linewidth=2,color="#5B84B1FF") +
+  annotate(geom="text", x=75, y=0.2, label="Estimate", color="#5B84B1FF",size=4) +
+  ylab("Pr(Occupancy)") + xlab("Riparian cover (%)") + ylim(0,1) + theme_bw()
+
+gppred1 <- ggplot() +
+  geom_ribbon(data = pred.p, aes(x=highFlow, ymin=lower, ymax=upper),
+              fill="#5B84B1FF", alpha=0.25) +
+  geom_line(data = pred.p, aes(x=highFlow, y=Predicted), linewidth=2,color="#5B84B1FF") +
+  annotate(geom="text", x=5.25, y=0.9, label="Estimate", color="#5B84B1FF",size=4) +
+  ylab("Pr(Detection)") + xlab("High-flow days in preceding week") + ylim(0,1) + theme_bw()
+plot_grid(gpsipred1,gppred1)
+```
+
+\vfill
+
+
+## Predict otter occupancy across the river network
+
+- Supply riparian cover for every river site, including unsurveyed sites.
+- Use the fitted occupancy model (`type="state"`), accounting for imperfect detection.
+- Here, 200 hypothetical river sites span the surveyed cover range.
+
+
+
+```{r, size="scriptsize"}
+network.pred <- predict(topmod, type="state",
+                        newdata=network, append=TRUE)
+head(network.pred[, c("cover", "Predicted", "lower", "upper")])
+```
+
+## Estimated otter occupancy map
+
+```{r, echo=FALSE, fig.align='center', fig.height=3.2, fig.width=8, out.height="2in", warning=FALSE}
+ggplot(network.pred) +
+  geom_segment(aes(x=x, y=yy, xend=xend, yend=yend,
+                   colour=Predicted), linewidth=2) +
+  scale_colour_viridis_c(limits=c(0, 1), name="Pr(site use)") +
+  coord_equal() + theme_void() + theme(legend.position="right")
+```
+
+- Colours show fitted seasonal site-use probabilities, not confirmed presence.
+- This is for a **hypothetical** river network in Kyrgyzstan.
+- Predictions at unsurveyed sites rely on the fitted relationships.
+
+## Uncertainty in the occupancy map
+
+```{r, echo=FALSE, fig.align='center', fig.height=3.2, fig.width=8, out.height="2in", warning=FALSE}
+network.pred$CIwidth <- network.pred$upper - network.pred$lower
+ggplot(network.pred) +
+  geom_segment(aes(x=x, y=yy, xend=xend, yend=yend,
+                   colour=CIwidth), linewidth=2) +
+  scale_colour_viridis_c(limits=c(0, 1), name="95% CI width") +
+  coord_equal() + theme_void() + theme(legend.position="right")
+```
+
+- Wider intervals mean less precise predictions of site use.
+- Intervals describe uncertainty conditional on the fitted model.
+- Retain probabilities and uncertainty when interpreting a mapped range.
+
+
+<!-- Multi-season extension -->
+
+# OPTIONAL: Extension to multi-season (dynamic) occupancy models 
+
+## Multi-season `unmarked` workflow - \alert{data formatting}
+
+Organise observations, site covariates and observation covariates.
+
+- The same 100 sites; three visits in each of three seasons.
+- One row per site; visit columns grouped by season then visit.
+- `S1V1` = season 1, visit 1; missed visits are `NA`.
+
+```{r, size="scriptsize"}
+# combined: detections, cover and high-flow days
+msdata <- data.frame(y=y.ms, cover=cover, highFlow=flow.ms)
+head(msdata, 2)
+```
+
+## Multi-season `unmarked` workflow - \alert{create the unmarkedFrame}
+
+Create an `unmarkedMultFrame` object:
+
+\vspace{0.2cm}
+
+```{r, eval=FALSE, size="footnotesize"}
+?unmarkedMultFrame
+umf.ms <- unmarkedMultFrame(y =          , # observations
+                           siteCovs =   , # site covariates
+                           obsCovs =    , # visit covariates
+                           numPrimary = ) # number of seasons
+```
+
+\vspace{0.5cm}
+
+## Multi-season `unmarked` workflow - \alert{create the unmarkedFrame}
+
+Create an `unmarkedMultFrame` object:
+
+\vspace{0.2cm}
+
+```{r, eval=FALSE, size="footnotesize"}
+?unmarkedMultFrame
+umf.ms <- unmarkedMultFrame(y =          , # observations
+                           siteCovs =   , # site covariates
+                           obsCovs =    , # visit covariates
+                           numPrimary = ) # number of seasons
+```
+
+- `y` is a binary **M x (J x T)** matrix or data frame.
+- Here: 100 sites, three visits, three seasons = **100 x 9**.
+- Columns: season 1 visits 1--3, season 2 visits 1--3, then season 3.
+
+\vfill
+
+```{r, echo=FALSE, size="scriptsize"}
+head(msdata[, 1:9], 3)
+```
+
+## Multi-season `unmarked` workflow - \alert{create the unmarkedFrame}
+
+Create an `unmarkedMultFrame` object:
+
+\vspace{0.2cm}
+
+```{r, eval=FALSE, size="footnotesize"}
+?unmarkedMultFrame
+umf.ms <- unmarkedMultFrame(y =          , # observations
+                           siteCovs =   , # site covariates
+                           obsCovs =    , # visit covariates
+                           numPrimary = ) # number of seasons
+```
+
+- `siteCovs` is a data frame with **M** rows.
+- Here, riparian cover is a site covariate held constant across seasons.
+- Season-varying site covariates would use `yearlySiteCovs`.
+
+\vfill
+
+```{r, echo=FALSE, size="scriptsize"}
+head(msdata[, "cover", drop=FALSE], 3)
+```
+
+## Multi-season `unmarked` workflow - \alert{create the unmarkedFrame}
+
+Create an `unmarkedMultFrame` object:
+
+\vspace{0.2cm}
+
+```{r, eval=FALSE, size="footnotesize"}
+?unmarkedMultFrame
+umf.ms <- unmarkedMultFrame(y =          , # observations
+                           siteCovs =   , # site covariates
+                           obsCovs =    , # visit covariates
+                           numPrimary = ) # number of seasons
+```
+
+- `obsCovs` is a named list of **M x (J x T)** data frames.
+- Its columns must match the order of the detection columns in `y`.
+- `numPrimary` is the number of seasons: **3**, not the nine visits.
+
+\vfill
+
+```{r, echo=FALSE, size="scriptsize"}
+head(msdata[, 11:19], 2)
+```
+
+## Multi-season `unmarked` workflow - \alert{create the unmarkedFrame}
+
+Create an `unmarkedMultFrame` object:
+
+\vspace{0.2cm}
+
+```{r, size="footnotesize"}
+# for our simulated data
+umf.ms <- unmarkedMultFrame(y = msdata[, 1:9],
+                           siteCovs = data.frame(cover = msdata$cover),
+                           obsCovs = list(highFlow = msdata[, 11:19]),
+                           numPrimary = 3)
+```
+
+- `y`: nine detection columns, grouped by season then visit.
+- `siteCovs`: one row per site.
+- `obsCovs`: nine corresponding high-flow columns.
+- States are stable within a season; they can change between seasons.
+
+## Multi-season `unmarked` workflow - \alert{model fitting}
+
+Fit a model using the `colext()` function:
+
+\vspace{0.2cm}
+
+```{r, eval=FALSE, size="footnotesize"}
+?colext
+mod.ms <- colext(psiformula =     , # initial occupancy
+                 gammaformula =   , # colonisation
+                 epsilonformula = , # local extinction
+                 pformula =       , # detection
+                 data =           ) # an unmarkedMultFrame
+```
+
+\vspace{0.5cm}
+
+## Multi-season `unmarked` workflow - \alert{model fitting}
+
+Fit a model using the `colext()` function:
+
+\vspace{0.2cm}
+
+```{r, eval=FALSE, size="footnotesize"}
+?colext
+mod.ms <- colext(psiformula =     , # initial occupancy
+                 gammaformula =   , # colonisation
+                 epsilonformula = , # local extinction
+                 pformula =       , # detection
+                 data =           ) # an unmarkedMultFrame
+```
+
+- Four separate formulas, each with a single `~`:
+    - `psiformula`: initial probability of site use.
+    - `gammaformula`: gain of use at previously unused sites.
+    - `epsilonformula`: loss of use at previously used sites.
+    - `pformula`: detection probability within each season.
+- `data` is an `unmarkedMultFrame` object.
+
+## Multi-season `unmarked` workflow - \alert{model fitting}
+
+Fit a model using the `colext()` function:
+
+\vspace{0.2cm}
+
+```{r, size="footnotesize"}
+# for our simulated data
+mod.ms <- colext(psiformula = ~cover,
+                 gammaformula = ~1,
+                 epsilonformula = ~1,
+                 pformula = ~highFlow,
+                 data = umf.ms)
+```
+
+- Initial use is associated with riparian cover.
+- Gain and loss probabilities are constant between seasons.
+- Detection is associated with recent high flows.
+
+## Interpret changes in otter site use
+
+```{r, include=FALSE}
+# Back-transform estimates and intervals to the probability scale.
+initial.use <- backTransform(linearComb(mod.ms, c(1, 50), type="psi"))
+gain.use <- backTransform(mod.ms, type="col")
+loss.use <- backTransform(mod.ms, type="ext")
+ms.estimates <- list(initial.use, gain.use, loss.use)
+ms.results <- data.frame(
+  Process=c("Initial use at 50% cover", "Gain of use (colonisation)",
+            "Loss of use (local extinction)"),
+  Estimate=vapply(ms.estimates, function(x) unname(coef(x)), numeric(1)),
+  Lower=vapply(ms.estimates, function(x) confint(x)[1], numeric(1)),
+  Upper=vapply(ms.estimates, function(x) confint(x)[2], numeric(1))
+)
+```
+
+```{r, echo=FALSE, size="scriptsize"}
+knitr::kable(ms.results, digits=2, col.names=c("Process", "Estimate", "95% CI lower", "95% CI upper"))
+```
+
+- Gain is conditional on a site being unused in the previous season.
+- Loss is conditional on a site being used; it does not mean an otter died.
+- The cover effect describes initial use; later use follows from gains and losses.
+- Estimates allow for missed signs; fewer detections alone do not establish loss.

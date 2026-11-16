@@ -1,0 +1,631 @@
+---
+title: Introduction to Statisical Modelling in R
+subtitle: Biodiversity Monitoring Course, Module 1
+fontsize: 10pt
+format:
+  beamer:
+    theme: metropolis
+    incremental: false
+    slide-level: 2
+    pdf-engine: xelatex
+    syntax-highlighting: tango
+    include-in-header:
+      text: |
+        \usepackage{arydshln}
+        \usepackage{animate}
+        % Treat image width and height as bounds, preserving screenshots and plot proportions.
+        \setkeys{Gin}{keepaspectratio}
+        \definecolor{bl}{rgb}{0.16,0.32,0.75}
+        \definecolor{rd}{rgb}{0.82,0.1,0.26}
+        \definecolor{grn}{rgb}{0.55,0.71,0.0}
+        \providecommand{\hig}[1]{\textcolor{grn}{#1}}
+        \providecommand{\hir}[1]{\textcolor{rd}{#1}}
+        \newcommand{\roomyitems}[1][0.65em]{\renewcommand{\tightlist}{\setlength{\itemsep}{#1}\setlength{\parskip}{0pt}}}
+        % Apply locally to slides with spare vertical space; dense figure slides stay compact.
+        \newcommand{\spacedslide}[1][0.8em]{\roomyitems[#1]\setlength{\parskip}{0.6em}}
+        \setbeamertemplate{title page}{%
+          \centering
+          \includegraphics[width=0.27\textwidth,height=1.1cm,keepaspectratio]{../logos/01-standard-black-text.png}\hfill
+          \includegraphics[width=0.40\textwidth,height=1.1cm,keepaspectratio]{../logos/creem-long.png}\hfill
+          \includegraphics[width=0.19\textwidth,height=1.1cm,keepaspectratio]{../logos/SLT-Logo-2016-300dpi-Regular.jpg}\par
+          \vspace{0.35cm}
+          {\LARGE\inserttitle\par}
+          \vspace{0.35cm}
+          {\normalsize\insertsubtitle\par}
+          \vspace{0.25cm}
+          {\small UNDP-GEF Project\par}
+          \vspace{0.15cm}
+          {\small ``Integrated Community-based Management of High Value Mountain Ecosystems in Southern Kyrgyzstan for Multiple Benefits''\par}
+          \vfill
+          {\fontsize{6}{7}\selectfont
+          \textcopyright{} 2026 University of St Andrews (Centre for Research into Ecological and Environmental Modelling, CREEM), Snow Leopard Trust, developed within the framework of the UNDP-GEF Pamir-Alai project. Licensed under CC BY 4.0. You may share and adapt these materials if you keep this credit and indicate any changes.\par}
+        }
+classoption: t
+urlcolor: teal
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+  fig.align = "center", dev = "pdf", fig.crop = FALSE,
+  fig.width = 6, fig.height = 3.4, out.width = "90%",
+  out.height = "1.8in", fig.path = "figures/02-intro-slides-")
+chunk_hook <- knitr::knit_hooks$get("chunk")
+knitr::knit_hooks$set(chunk = function(x, options) {
+  paste0("\n\\footnotesize\n\n", chunk_hook(x, options),
+         "\n\\normalsize\n")
+})
+```
+
+## Acknowledgements and conditions of use
+
+Based on *R Essentials* and *Stats Essentials*, developed by the **University of St Andrews**. Source authors: Tiago Marques, Theoni Photopoulou and Lindesay Scott-Hayward. Adapted for this course.
+
+**Course notes (including translations):** may be disseminated to staff and participants of future workshops and courses; must not be made freely available online or adapted or shared without credit to the University of St Andrews.
+
+**These slides (including translations):** [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). May be freely distributed or adapted as part of future versions of this course, with attribution to the University of St Andrews and Snow Leopard Trust.
+
+
+
+## Learning outcomes
+
+\spacedslide[0.8em]
+
+<!-- All teaching material is selected from 02_intro_to_stat_r_notes.qmd.
+44 slides including the title slide and acknowledgement/licence slide 2; approximately 60 minutes.
+Suggested pacing: overview/AI 4 min; R/RStudio/projects 8 min; calculations/data 10 min;
+functions/packages 8 min; data/plots 10 min; regression 18 min; summary/exercise 2 min.
+The full exercise and additional self-study tips remain in the notes. -->
+
+By the end of this module you should be able to:
+
+- Navigate R and RStudio and organise work in a project.
+- Create objects, use functions, and load packages.
+- Read, inspect, summarise, plot, and save data.
+- Construct a model formula and fit a simple linear regression.
+- Interpret coefficients and make predictions.
+
+Later: work through the examples and activities in the course notes.
+
+## Using AI while learning R
+
+\spacedslide[0.9em]
+
+AI can help create code, explain commands, and identify errors.
+
+Before using generated code, you should be able to:
+
+- Explain what each important step is doing.
+- Run the code and inspect its results.
+- Identify and debug unexpected behaviour.
+- Recognise assumptions and justify the analysis.
+
+You remain responsible for the analysis.
+
+## R and RStudio
+
+\spacedslide[1.4em]
+
+- **R** is a programming language for statistical computing and data analysis.
+- **RStudio** provides tools for writing code, managing projects, visualising results, and creating reports.
+- You write and run R code inside RStudio, but R does the work.
+- R can run without RStudio; RStudio needs R.
+
+## The four RStudio panes
+
+:::: {.columns align="top"}
+
+::: {.column width="67%"}
+
+![](figures/rstudio-panes-labeled.png){height=2.5in fig-align="center"}
+
+:::
+
+::: {.column width="31%"}
+
+\small
+
+- Source: write and save scripts. 
+- Console: execute commands.  
+- Environment: inspect objects. 
+- Output: files, plots, packages, help.
+
+\normalsize 
+
+:::
+
+::::
+
+## Your turn: console or script?
+
+\spacedslide[1.5em]
+
+1. Identify the source, console, environment, and output panes.
+2. Type `2 + 2` directly in the console.
+3. Write the same command in a new R script and run it from the source pane.
+
+Which version of the command is saved for later?
+
+## Why use an RStudio Project?
+
+\spacedslide[1.1em]
+
+An RStudio Project keeps the files for one analysis together.
+
+- **Organised:** all files for one project are stored together.
+- **Reproducible:** scripts use relative file paths.
+- **Portable:** sharing the project does not require changing paths.
+- **Convenient:** reopening a project restores the open scripts.
+
+Open `Introduction.Rproj` for this module.
+
+## Creating and organising a project
+
+Choose **New Project**, then **New Directory** or **Existing Directory**.
+
+![](figures/04all_set_up.png){height=2.2in fig-align="center"}
+
+Keep data, scripts, graphics, and output in clearly named folders.
+
+## R as a calculator
+
+\spacedslide[0.8em]
+
+\vspace{0.7em}
+
+```{r}
+34.56 + 150.34
+630.80 * 0.25
+630.80 / 4
+```
+
+\vspace{1em}
+
+Type expressions into the console to evaluate them immediately.
+
+## Store values as named objects
+
+\spacedslide[0.8em]
+
+\vspace{0.7em}
+
+```{r}
+mymain <- 150.34
+mydrink <- 34.56
+mybill <- mymain + mydrink
+mybill
+```
+
+\vspace{1em}
+
+`<-` assigns a value to a name. Type the name to see its value.
+
+## Inspect objects and find help
+
+\spacedslide[0.8em]
+
+```{r}
+class(mybill)
+typeof(mybill)
+```
+
+- `ls()` lists objects in the workspace.
+- `class()` tells you what kind of object you have.
+- `typeof()` tells you how it is stored.
+- `?mean` opens help for a function.
+
+## Data types
+
+\spacedslide[0.8em]
+
+```{r}
+a <- 10
+b <- "elephant"
+c <- TRUE
+d <- factor(c("foraging", "travel", "foraging"))
+```
+
+- **Numeric:** numbers used in calculations.
+- **Character:** text strings.
+- **Logical:** `TRUE` or `FALSE`.
+- **Factor:** categorical variables used in modelling and grouping.
+
+Use `class()` to inspect each object.
+
+## Vectors and indexing
+
+Vectors are ordered collections of values of the same type.
+
+```{r}
+x1 <- c(10, 20, 30, 40)
+length(x1)
+x1[1]
+x1[3]
+```
+
+Square brackets select elements. R starts counting at 1.
+
+## Missing values
+
+\spacedslide[1em]
+
+```{r}
+x1[12]
+mean(c(1, 2, 3, NA), na.rm = TRUE)
+```
+
+- R uses `NA` (Not Available) for missing values.
+- `na.rm = TRUE` asks the function to omit missing values.
+- Check missing values before deciding how to handle them.
+
+## Data frames
+
+Data frames store tabular data with rows and columns.
+
+```{r}
+df1 <- data.frame(
+  id = 1:4,
+  value = c(10, 20, 30, 40),
+  group = c("A", "A", "B", "B")
+)
+df1
+```
+
+## Lists
+
+\spacedslide[0.8em]
+
+Lists can store multiple objects, even of different types.
+
+\vspace{0.7em}
+
+```{r}
+lst <- list(
+  numbers = x1,
+  table = df1,
+  summary = mean(x1)
+)
+names(lst)
+```
+
+\vspace{1em}
+
+## Look inside a data frame
+
+```{r}
+names(df1)
+dim(df1)
+str(df1)
+```
+
+`head()` and `tail()` show the first and last rows.
+
+## Functions: inputs and outputs
+
+Functions are reusable instructions that take inputs and return outputs.
+
+```{r}
+log(10)
+sqrt(16)
+mean(x = c(1, 2, 3, 4, 5))
+```
+
+Use the format `function_name(input)`. Functions can take several arguments.
+
+## Function arguments
+
+```{r}
+sum(x = c(1, 2, 3, 4, 5))
+sd(x = c(1, 2, 3, 4, 5))
+mean(x = c(1, 2, 3, NA), na.rm = TRUE)
+```
+
+Arguments specify the data and how the function should work.
+
+Many arguments have defaults; use `?mean` to inspect them.
+
+## Write and check a function
+
+```{r}
+my_fun <- function(x) {
+  res <- x + x
+  return(res)
+}
+my_fun(3)
+my_fun(2)
+```
+
+Check that a function returns the result you expect. The notes show a check using `testthat`.
+
+## Comments and practice
+
+\spacedslide[0.8em]
+
+In R, `#` introduces a comment. R ignores the rest of that line.
+
+\vspace{0.7em}
+
+```{r, eval=FALSE}
+# Create a vector of animal counts
+counts <- c(12, 8, 15, 10)
+mean(counts) # Calculate the average count
+```
+
+\vspace{1em}
+
+**Your turn:** write `celsius_to_fahrenheit()` using
+$F = C \times 9/5 + 32$. Check that 0 returns 32 and 20 returns 68.
+
+## R packages
+
+\spacedslide[0.8em]
+
+Packages provide additional functions, documentation, and sometimes data.
+
+\vspace{0.7em}
+
+```{r, eval=FALSE}
+# Install once if dplyr is missing
+install.packages("dplyr")
+
+# Load in each new R session
+library(dplyr)
+```
+
+\vspace{1em}
+
+Install once; load at the beginning of each session that needs the package.
+
+## A package function and the pipe
+
+\spacedslide[1em]
+
+```{r}
+library(dplyr)
+x3 <- 1:5
+y3 <- x3^2
+df3 <- data.frame(x = x3, y = y3)
+df3a <- df3 |>
+  mutate(y2 = y^2)
+```
+
+- `|>` passes the object on the left to the function on the right.
+- `mutate()` adds a column.
+- Saving as `df3a` preserves `df3`.
+
+## Read and inspect data
+
+```{r}
+penguin_dat <- read.csv("data/penguin_dat.csv")
+dim(penguin_dat)
+names(penguin_dat)
+```
+
+Use `head(penguin_dat)` and `str(penguin_dat)` to check the import.
+
+Measurements of penguins near Palmer Station, Antarctica, derived from `palmerpenguins`.
+
+## Select rows and columns
+
+\spacedslide[0.8em]
+
+Use `data[row, column]`. An empty side selects everything on that side.
+
+\vspace{0.7em}
+
+```{r}
+penguin_dat[1,1]
+head(penguin_dat[,1])
+```
+
+\vspace{1em}
+
+`penguin_dat[1,]` selects all measurements for the first penguin.
+
+## Select a named column and summarise it
+
+\spacedslide[0.8em]
+
+\vspace{0.7em}
+
+```{r}
+mean(penguin_dat$bill_length_mm)
+sum(is.na(penguin_dat$bill_length_mm))
+mean(penguin_dat$bill_length_mm, na.rm = TRUE)
+```
+
+\vspace{1em}
+
+`$` selects a column by name. The mean bill length is in millimetres.
+
+## Create a column and save the data
+
+\spacedslide[0.8em]
+
+\vspace{0.7em}
+
+```{r}
+penguin_dat2 <- penguin_dat
+penguin_dat2$body_mass_kg <-
+  penguin_dat2$body_mass_g / 1000
+```
+
+\vspace{1em}
+
+\vspace{0.7em}
+
+```{r, eval=FALSE}
+dir.create("output/data", recursive = TRUE,
+           showWarnings = FALSE)
+write.csv(penguin_dat2, "output/data/penguin_dat2.csv",
+          row.names = FALSE)
+```
+
+\vspace{1em}
+
+Keep the original CSV. `row.names = FALSE` avoids an extra row-number column.
+
+## Plotting with base R
+
+```{r, eval=FALSE}
+x4 <- 1:10
+y4 <- x4^2
+plot(x4, y4, pch = 19, col = "blue")
+lines(x4, y4)
+```
+
+```{r, echo=FALSE, out.height="1.45in"}
+x4 <- 1:10
+y4 <- x4^2
+plot(x4, y4, pch = 19, col = "blue")
+lines(x4, y4)
+```
+
+## Compare body mass among species
+
+```{r, echo=FALSE, out.height="2in"}
+penguin_plot_data <- penguin_dat2
+boxplot(body_mass_kg ~ species, data = penguin_plot_data,
+        main = "Penguin body mass by species",
+        xlab = "Species", ylab = "Body mass (kg)")
+```
+
+`body_mass_kg ~ species` asks for body mass grouped by species.
+
+## Save a plot
+
+\spacedslide[0.8em]
+
+Open a graphics device, draw the plot, then close it.
+
+\vspace{0.7em}
+
+```{r, eval=FALSE}
+dir.create("output/figures", recursive = TRUE,
+           showWarnings = FALSE)
+pdf("output/figures/penguin_body_mass_boxplot.pdf",
+    width = 7, height = 5)
+boxplot(body_mass_kg ~ species, data = penguin_plot_data,
+        main = "Penguin body mass by species",
+        xlab = "Species", ylab = "Body mass (kg)")
+dev.off()
+```
+
+\vspace{1em}
+
+## Simple linear regression
+
+\spacedslide[1.3em]
+
+Simple linear regression investigates the relationship between a **predictor** and an **outcome**.
+
+- Describe relationships.
+- Test hypotheses.
+- Make predictions.
+
+Our example: is penguin body mass associated with flipper length?
+
+## Inspect the relationship
+
+```{r, echo=FALSE, out.height="2in"}
+plot(body_mass_g ~ flipper_length_mm, data = penguin_dat,
+     pch = 19, col = "blue",
+     xlab = "Flipper length (mm)", ylab = "Body mass (g)",
+     main = "Penguin Body Mass and Flipper Length")
+```
+
+Is the relationship positive or negative? Approximately linear?
+
+## Construct a model formula
+
+\spacedslide[0.8em]
+
+```r
+body_mass_g ~ flipper_length_mm
+```
+
+- **Left:** response variable, `body_mass_g`.
+- **Right:** predictor variable, `flipper_length_mm`.
+- `~` means “model the response as a function of the predictor”.
+
+$$
+\text{Body mass (g)}_i = \beta_0 + \beta_1 \times \text{Flipper length (mm)}_i + \varepsilon_i
+$$
+
+$\beta_0$: intercept; $\beta_1$: slope; $\varepsilon_i$: residual error.
+
+## Fit the model
+
+\AtBeginEnvironment{verbatim}{\fontsize{6}{7}\selectfont}
+
+```{r}
+model <- lm(
+  body_mass_g ~ flipper_length_mm,
+  data = penguin_dat  # tells R where to find the columns.
+)
+summary(model)  # reports coefficients, uncertainty, and R-squared.
+```
+
+
+## Interpret the coefficients
+
+\spacedslide[1.2em]
+
+```{r}
+coef(model)
+```
+
+- **Intercept:** predicted average mass at zero flipper length (not useful here)
+- **Slope:** expected change in mass (g) per additional millimetre.
+
+## The fitted line
+
+```{r, echo=FALSE, out.height="2in"}
+plot(body_mass_g ~ flipper_length_mm, data = penguin_dat,
+     pch = 19, col = "blue",
+     xlab = "Flipper length (mm)", ylab = "Body mass (g)")
+abline(model, col = "red", lwd = 2)
+```
+
+The line estimates average body mass. Individual masses will differ from it.
+
+## R-squared and model fit
+
+\spacedslide[1.4em]
+
+R-squared is the proportion of variation in body mass explained by flipper length.
+
+- 0: none of the variation explained.
+- 1: all of the variation explained.
+- 0.75: 75% explained; 25% remains unexplained.
+
+Locate **Multiple R-squared** in `summary(model)`.
+
+## Predict for new flipper lengths
+
+\spacedslide[0.9em]
+
+```{r}
+newdata <- data.frame(flipper_length_mm = c(180, 200, 220))
+predict(model, newdata = newdata)
+```
+
+- The column name must match the predictor in the formula.
+- These are estimated average masses in grams. Individual outcomes will vary.
+- These lengths are within the observed 172–231 mm range; 250 mm would be an extrapolation.
+
+## Typical R Workflow
+
+\spacedslide[0.55em]
+
+1. Open the correct RStudio Project.
+2. Load the required packages.
+3. Read the original data using a relative path.
+4. Inspect the data before changing anything.
+5. Create new objects for transformed data.
+6. Summarise and visualise the results.
+7. Fit a model, interpret coefficients, check assumptions, and predict.
+8. Check that the results are sensible.
+9. Save derived outputs in a dedicated output directory.
+
